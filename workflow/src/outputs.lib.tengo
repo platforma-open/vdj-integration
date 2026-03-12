@@ -1,0 +1,360 @@
+ll := import("@platforma-sdk/workflow-tengo:ll")
+xsv := import("@platforma-sdk/workflow-tengo:pframes.xsv")
+pframes := import("@platforma-sdk/workflow-tengo:pframes")
+
+/**
+ * Import linker and match count TSVs into pFrames.
+ *
+ * @param tsvFiles: map with keys toReferenceTsv, toTargetTsv, targetMatchCountTsv, refMatchCountTsv
+ * @param targetAxisSpec: axis spec for target clonotype key
+ * @param referenceAxisSpec: axis spec for reference clonotype key
+ * @param blockId: string block id for domain tagging
+ * @return map with keys toReferencePf, toTargetPf, targetMatchCountPf, refMatchCountPf
+ */
+importMatchResults := func(tsvFiles, targetAxisSpec, referenceAxisSpec, blockId) {
+	defaultConvMem := "8GiB"
+	defaultConvCpu := 1
+
+	// Import toReference linker: referenceAxis -> targetAxis
+	toReferencePf := xsv.importFile(tsvFiles.toReferenceTsv, "tsv", {
+		axes: [{
+			column: "referenceKey",
+			spec: referenceAxisSpec
+		}, {
+			column: "targetKey",
+			spec: targetAxisSpec
+		}],
+		columns: [{
+			column: "link",
+			spec: {
+				name: "pl7.app/vdj/integration/toReference",
+				valueType: "Int",
+				domain: {
+					"pl7.app/vdj/integration/blockId": blockId
+				},
+				annotations: {
+					"pl7.app/isLinkerColumn": "true",
+					"pl7.app/table/visibility": "hidden"
+				}
+			}
+		}],
+		storageFormat: "Parquet",
+		partitionKeyLength: 0
+	}, {splitDataAndSpec: true, cpu: defaultConvCpu, mem: defaultConvMem})
+
+	// Import toTarget linker: targetAxis -> referenceAxis
+	toTargetPf := xsv.importFile(tsvFiles.toTargetTsv, "tsv", {
+		axes: [{
+			column: "targetKey",
+			spec: targetAxisSpec
+		}, {
+			column: "referenceKey",
+			spec: referenceAxisSpec
+		}],
+		columns: [{
+			column: "link",
+			spec: {
+				name: "pl7.app/vdj/integration/toTarget",
+				valueType: "Int",
+				domain: {
+					"pl7.app/vdj/integration/blockId": blockId
+				},
+				annotations: {
+					"pl7.app/isLinkerColumn": "true",
+					"pl7.app/table/visibility": "hidden"
+				}
+			}
+		}],
+		storageFormat: "Parquet",
+		partitionKeyLength: 0
+	}, {splitDataAndSpec: true, cpu: defaultConvCpu, mem: defaultConvMem})
+
+	// Import target match count
+	targetMatchCountPf := xsv.importFile(tsvFiles.targetMatchCountTsv, "tsv", {
+		axes: [{
+			column: "clonotypeKey",
+			spec: targetAxisSpec
+		}],
+		columns: [{
+			column: "matchCount",
+			spec: {
+				name: "pl7.app/vdj/integration/matchCount",
+				valueType: "Int",
+				domain: {
+					"pl7.app/vdj/integration/blockId": blockId
+				},
+				annotations: {
+					"pl7.app/label": "Match Count (target)",
+					"pl7.app/table/visibility": "default",
+					"pl7.app/table/orderPriority": "1000"
+				}
+			}
+		}, {
+			column: "confidence",
+			spec: {
+				name: "pl7.app/vdj/integration/confidence",
+				valueType: "Float",
+				domain: {
+					"pl7.app/vdj/integration/blockId": blockId
+				},
+				annotations: {
+					"pl7.app/label": "Confidence (target)",
+					"pl7.app/table/visibility": "default",
+					"pl7.app/table/orderPriority": "900",
+					"pl7.app/format": ".2f"
+				}
+			}
+		}],
+		storageFormat: "Parquet",
+		partitionKeyLength: 0
+	}, {splitDataAndSpec: true, cpu: defaultConvCpu, mem: defaultConvMem})
+
+	// Import reference match count
+	refMatchCountPf := xsv.importFile(tsvFiles.refMatchCountTsv, "tsv", {
+		axes: [{
+			column: "clonotypeKey",
+			spec: referenceAxisSpec
+		}],
+		columns: [{
+			column: "matchCount",
+			spec: {
+				name: "pl7.app/vdj/integration/matchCount",
+				valueType: "Int",
+				domain: {
+					"pl7.app/vdj/integration/blockId": blockId
+				},
+				annotations: {
+					"pl7.app/label": "Match Count (reference)",
+					"pl7.app/table/visibility": "default",
+					"pl7.app/table/orderPriority": "1000"
+				}
+			}
+		}, {
+			column: "confidence",
+			spec: {
+				name: "pl7.app/vdj/integration/confidence",
+				valueType: "Float",
+				domain: {
+					"pl7.app/vdj/integration/blockId": blockId
+				},
+				annotations: {
+					"pl7.app/label": "Confidence (reference)",
+					"pl7.app/table/visibility": "default",
+					"pl7.app/table/orderPriority": "900",
+					"pl7.app/format": ".2f"
+				}
+			}
+		}],
+		storageFormat: "Parquet",
+		partitionKeyLength: 0
+	}, {splitDataAndSpec: true, cpu: defaultConvCpu, mem: defaultConvMem})
+
+	return {
+		toReferencePf: toReferencePf,
+		toTargetPf: toTargetPf,
+		targetMatchCountPf: targetMatchCountPf,
+		refMatchCountPf: refMatchCountPf
+	}
+}
+
+/**
+ * Build the combined results pFrame for the UI table and the export pFrame.
+ *
+ * @param matchResults: map returned by importMatchResults
+ * @param targetCols: map with keys seqs, vGenes, jGenes (arrays of columns)
+ * @param refCols: map with keys seqs, vGenes, jGenes (arrays of columns)
+ * @param targetAxisSpec: axis spec for target clonotype key
+ * @param referenceAxisSpec: axis spec for reference clonotype key
+ * @param blockId: string block id for domain tagging
+ * @return map with keys resultsPf, exportPf
+ */
+buildOutputPFrames := func(matchResults, targetCols, refCols, targetAxisSpec, referenceAxisSpec, blockId) {
+	defaultConvMem := "16GiB"
+	defaultConvCpu := 1
+
+	toTargetPf := matchResults.toTargetPf
+	targetMatchCountPf := matchResults.targetMatchCountPf
+	refMatchCountPf := matchResults.refMatchCountPf
+
+	// -- Build flat joined parquet for the UI results table --
+	resultsTableBuilder := pframes.parquetFileBuilder()
+	resultsTableBuilder.mem("32GiB")
+	resultsTableBuilder.cpu(4)
+	resultsTableBuilder.setAxisHeader(targetAxisSpec.name, "targetKey")
+	resultsTableBuilder.setAxisHeader(referenceAxisSpec.name, "refKey")
+
+	// Linker drives the join between axes
+	for _, v in toTargetPf {
+		resultsTableBuilder.add(v, {header: "link"})
+	}
+
+	// Track columns for reimport
+	importCols := []
+
+	// Helper: get label from column spec, with side suffix
+	colLabel := func(col, side) {
+		label := ""
+		if !is_undefined(col.spec.annotations) && !is_undefined(col.spec.annotations["pl7.app/label"]) {
+			label = col.spec.annotations["pl7.app/label"]
+		} else {
+			label = col.spec.name
+		}
+		return label + " (" + side + ")"
+	}
+
+	// Helper: add columns to builder and importCols list
+	addCols := func(cols, prefix, colName, side, priority) {
+		for i, col in cols {
+			h := prefix + string(i)
+			resultsTableBuilder.add(col, {header: h})
+			importCols = append(importCols, {
+				column: h,
+				spec: {
+					name: "pl7.app/vdj/integration/" + colName,
+					valueType: col.spec.valueType,
+					domain: {
+						"pl7.app/vdj/integration/blockId": blockId,
+						"pl7.app/vdj/integration/index": string(i)
+					},
+					annotations: {
+						"pl7.app/label": colLabel(col, side),
+						"pl7.app/table/orderPriority": priority
+					}
+				}
+			})
+		}
+	}
+
+	addCols(targetCols.seqs, "targetSeq", "targetSequence", "target", "800")
+	addCols(targetCols.vGenes, "targetVGene", "targetVGene", "target", "700")
+	addCols(targetCols.jGenes, "targetJGene", "targetJGene", "target", "600")
+	addCols(refCols.seqs, "refSeq", "refSequence", "reference", "500")
+	addCols(refCols.vGenes, "refVGene", "refVGene", "reference", "400")
+	addCols(refCols.jGenes, "refJGene", "refJGene", "reference", "300")
+
+	// Target match count & confidence
+	for _, v in targetMatchCountPf {
+		if v.spec.name == "pl7.app/vdj/integration/matchCount" {
+			resultsTableBuilder.add(v, {header: "targetMatchCount"})
+			importCols = append(importCols, {
+				column: "targetMatchCount",
+				spec: {
+					name: "pl7.app/vdj/integration/matchCount",
+					valueType: "Int",
+					domain: {
+						"pl7.app/vdj/integration/blockId": blockId,
+						"pl7.app/vdj/integration/side": "target"
+					},
+					annotations: {
+						"pl7.app/label": "Match Count (target)",
+						"pl7.app/table/orderPriority": "1000"
+					}
+				}
+			})
+		} else if v.spec.name == "pl7.app/vdj/integration/confidence" {
+			resultsTableBuilder.add(v, {header: "targetConfidence"})
+			importCols = append(importCols, {
+				column: "targetConfidence",
+				spec: {
+					name: "pl7.app/vdj/integration/confidence",
+					valueType: "Float",
+					domain: {
+						"pl7.app/vdj/integration/blockId": blockId,
+						"pl7.app/vdj/integration/side": "target"
+					},
+					annotations: {
+						"pl7.app/label": "Confidence (target)",
+						"pl7.app/table/orderPriority": "900",
+						"pl7.app/format": ".2f"
+					}
+				}
+			})
+		}
+	}
+
+	// Reference match count & confidence
+	for _, v in refMatchCountPf {
+		if v.spec.name == "pl7.app/vdj/integration/matchCount" {
+			resultsTableBuilder.add(v, {header: "refMatchCount"})
+			importCols = append(importCols, {
+				column: "refMatchCount",
+				spec: {
+					name: "pl7.app/vdj/integration/matchCount",
+					valueType: "Int",
+					domain: {
+						"pl7.app/vdj/integration/blockId": blockId,
+						"pl7.app/vdj/integration/side": "reference"
+					},
+					annotations: {
+						"pl7.app/label": "Match Count (reference)",
+						"pl7.app/table/orderPriority": "1000"
+					}
+				}
+			})
+		} else if v.spec.name == "pl7.app/vdj/integration/confidence" {
+			resultsTableBuilder.add(v, {header: "refConfidence"})
+			importCols = append(importCols, {
+				column: "refConfidence",
+				spec: {
+					name: "pl7.app/vdj/integration/confidence",
+					valueType: "Float",
+					domain: {
+						"pl7.app/vdj/integration/blockId": blockId,
+						"pl7.app/vdj/integration/side": "reference"
+					},
+					annotations: {
+						"pl7.app/label": "Confidence (reference)",
+						"pl7.app/table/orderPriority": "900",
+						"pl7.app/format": ".2f"
+					}
+				}
+			})
+		}
+	}
+
+	resultsParquet := resultsTableBuilder.build({joinType: "Inner"})
+
+	// Import back with both axes so all columns share the same axis structure
+	importedResults := xsv.importFile(resultsParquet, "parquet", {
+		axes: [{
+			column: "targetKey",
+			spec: targetAxisSpec
+		}, {
+			column: "refKey",
+			spec: referenceAxisSpec
+		}],
+		columns: importCols,
+		storageFormat: "Parquet",
+		partitionKeyLength: 0
+	}, {splitDataAndSpec: true, cpu: defaultConvCpu, mem: defaultConvMem})
+
+	// Rebuild as proper pFrame for export
+	resultsPf := pframes.pFrameBuilder()
+	i := 0
+	for k, v in importedResults {
+		resultsPf.add(k + string(i), v.spec, v.data)
+		i = i + 1
+	}
+	resultsPf = resultsPf.build()
+
+	// Build export pFrame with linker (target→reference only) and match counts
+	epf := pframes.pFrameBuilder()
+	i = 0
+	for pf in [toTargetPf, targetMatchCountPf, refMatchCountPf] {
+		for k, v in pf {
+			epf.add(k + string(i), v.spec, v.data)
+			i = i + 1
+		}
+	}
+	epf = epf.build()
+
+	return {
+		resultsPf: resultsPf,
+		exportPf: epf
+	}
+}
+
+export ll.toStrict({
+	importMatchResults: importMatchResults,
+	buildOutputPFrames: buildOutputPFrames
+})

@@ -128,10 +128,9 @@ export const model = BlockModel.create()
   })
 
   .outputWithStatus("resultsTable", (ctx) => {
-    const targetCols = ctx.outputs?.resolve("resultsPf")?.getPColumns();
-    const refCols = ctx.outputs?.resolve("refResultsPf")?.getPColumns();
-    if (targetCols === undefined || refCols === undefined) return undefined;
-    return createPlDataTableV2(ctx, targetCols, ctx.uiState.tableState);
+    const cols = ctx.outputs?.resolve("resultsPf")?.getPColumns();
+    if (cols === undefined) return undefined;
+    return createPlDataTableV2(ctx, cols, ctx.uiState.tableState);
   })
 
   .output("isRunning", (ctx) => ctx.outputs?.getIsReadyOrError() === false)
