@@ -1,20 +1,27 @@
 import type { InferOutputsType, PlDataTableStateV2, PlRef } from "@platforma-sdk/model";
 import {
-  BlockModel,
+  BlockModelV3,
   createPlDataTableStateV2,
   createPlDataTableV2,
+  DataModelBuilder,
   plRefsEqual,
 } from "@platforma-sdk/model";
 
-export type BlockArgs = {
+export type BlockData = {
+  defaultBlockLabel: string;
+  customBlockLabel: string;
   targetRef?: PlRef;
   referenceRef?: PlRef;
   sequenceType: "nucleotide" | "aminoacid";
   feature?: string;
+  tableState: PlDataTableStateV2;
 };
 
-export type UiState = {
-  tableState: PlDataTableStateV2;
+export type BlockArgs = {
+  targetRef: PlRef;
+  referenceRef: PlRef;
+  sequenceType: "nucleotide" | "aminoacid";
+  feature: string;
 };
 
 const datasetOptionPatterns = [
@@ -35,41 +42,54 @@ const datasetOptionConfig = {
   },
 };
 
-export const model = BlockModel.create()
+export function getDefaultBlockLabel(data: { targetLabel?: string; referenceLabel?: string }) {
+  if (data.targetLabel && data.referenceLabel)
+    return `${data.targetLabel} to ${data.referenceLabel}`;
+  return "Select datasets";
+}
 
-  .withArgs<BlockArgs>({ sequenceType: "nucleotide" })
+export const blockDataModel = new DataModelBuilder().from<BlockData>("Ver_2026_03_27").init(() => ({
+  defaultBlockLabel: getDefaultBlockLabel({}),
+  customBlockLabel: "",
+  sequenceType: "nucleotide" as const,
+  tableState: createPlDataTableStateV2(),
+}));
 
-  .withUiState<UiState>({
-    tableState: createPlDataTableStateV2(),
+export const platforma = BlockModelV3.create(blockDataModel)
+
+  .args<BlockArgs>((data) => {
+    if (data.targetRef === undefined) throw new Error("No target ref");
+    if (data.referenceRef === undefined) throw new Error("No reference ref");
+    if (data.feature === undefined) throw new Error("No feature");
+
+    return {
+      targetRef: data.targetRef,
+      referenceRef: data.referenceRef,
+      sequenceType: data.sequenceType,
+      feature: data.feature,
+    };
   })
-
-  .argsValid(
-    (ctx) =>
-      ctx.args.targetRef !== undefined &&
-      ctx.args.referenceRef !== undefined &&
-      ctx.args.feature !== undefined,
-  )
 
   .output("targetOptions", (ctx) => {
     const options = ctx.resultPool.getOptions(datasetOptionPatterns, datasetOptionConfig);
-    const refRef = ctx.args.referenceRef;
+    const refRef = ctx.data.referenceRef;
     if (!options || !refRef) return options;
     return options.filter((o) => !plRefsEqual(o.ref, refRef));
   })
 
   .output("referenceOptions", (ctx) => {
     const options = ctx.resultPool.getOptions(datasetOptionPatterns, datasetOptionConfig);
-    const targetRef = ctx.args.targetRef;
+    const targetRef = ctx.data.targetRef;
     if (!options || !targetRef) return options;
     return options.filter((o) => !plRefsEqual(o.ref, targetRef));
   })
 
   .output("featureOptions", (ctx) => {
-    const targetRef = ctx.args.targetRef;
-    const referenceRef = ctx.args.referenceRef;
+    const targetRef = ctx.data.targetRef;
+    const referenceRef = ctx.data.referenceRef;
     if (targetRef === undefined || referenceRef === undefined) return undefined;
 
-    const sequenceType = ctx.args.sequenceType;
+    const sequenceType = ctx.data.sequenceType;
 
     const isTargetSingleCell =
       ctx.resultPool.getPColumnSpecByRef(targetRef)?.axesSpec[1].name ===
@@ -130,7 +150,7 @@ export const model = BlockModel.create()
   .outputWithStatus("resultsTable", (ctx) => {
     const cols = ctx.outputs?.resolve("resultsPf")?.getPColumns();
     if (cols === undefined) return undefined;
-    return createPlDataTableV2(ctx, cols, ctx.uiState.tableState);
+    return createPlDataTableV2(ctx, cols, ctx.data.tableState);
   })
 
   .output("isRunning", (ctx) => ctx.outputs?.getIsReadyOrError() === false)
@@ -141,4 +161,4 @@ export const model = BlockModel.create()
 
   .done();
 
-export type BlockOutputs = InferOutputsType<typeof model>;
+export type BlockOutputs = InferOutputsType<typeof platforma>;

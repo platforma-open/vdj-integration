@@ -17,7 +17,7 @@ import { useApp } from "../app";
 const app = useApp();
 
 const settingsOpen = ref(
-  app.model.args.targetRef === undefined || app.model.args.referenceRef === undefined,
+  app.model.data.targetRef === undefined || app.model.data.referenceRef === undefined,
 );
 
 watch(
@@ -34,9 +34,9 @@ watch(
   () => app.model.outputs.featureOptions,
   (options) => {
     if (!options || options.length === 0) return;
-    const current = app.model.args.feature;
+    const current = app.model.data.feature;
     if (current && options.some((o: { value: string }) => o.value === current)) return;
-    app.model.args.feature = options[0].value;
+    app.model.data.feature = options[0].value;
   },
 );
 
@@ -51,7 +51,11 @@ const tableSettings = usePlDataTableSettingsV2({
 </script>
 
 <template>
-  <PlBlockPage title="VDJ Integration">
+  <PlBlockPage
+    v-model:subtitle="app.model.data.customBlockLabel"
+    :subtitle-placeholder="app.model.data.defaultBlockLabel"
+    title="VDJ Integration"
+  >
     <template #append>
       <PlBtnGhost @click.stop="() => (settingsOpen = true)">
         Settings
@@ -61,7 +65,7 @@ const tableSettings = usePlDataTableSettingsV2({
       </PlBtnGhost>
     </template>
     <PlAgDataTableV2
-      v-model="app.model.ui.tableState"
+      v-model="app.model.data.tableState"
       :settings="tableSettings"
       :not-ready-text="strings.callToActions.configureSettingsAndRun"
       :no-rows-text="strings.states.noDataAvailable"
@@ -69,30 +73,30 @@ const tableSettings = usePlDataTableSettingsV2({
     <PlSlideModal v-model="settingsOpen" :close-on-outside-click="true" shadow>
       <template #title>Settings</template>
       <PlDropdownRef
-        v-model="app.model.args.targetRef"
+        v-model="app.model.data.targetRef"
         :options="app.model.outputs.targetOptions"
         label="Target dataset"
         clearable
         required
       />
       <PlDropdownRef
-        v-model="app.model.args.referenceRef"
+        v-model="app.model.data.referenceRef"
         :options="app.model.outputs.referenceOptions"
         label="Reference dataset"
         clearable
         required
       />
       <PlBtnGroup
-        v-model="app.model.args.sequenceType"
+        v-model="app.model.data.sequenceType"
         label="Sequence type"
         :options="sequenceTypeOptions"
         compact
       />
       <PlDropdown
-        v-model="app.model.args.feature"
+        v-model="app.model.data.feature"
         :options="app.model.outputs.featureOptions ?? []"
         label="Feature"
-        :disabled="!app.model.args.targetRef || !app.model.args.referenceRef"
+        :disabled="!app.model.data.targetRef || !app.model.data.referenceRef"
       />
     </PlSlideModal>
   </PlBlockPage>
