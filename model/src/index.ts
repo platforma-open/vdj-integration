@@ -157,6 +157,8 @@ export const platforma = BlockModelV3.create(blockDataModel)
 
   .title(() => "VDJ Integration")
 
+  .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel)
+
   .sections((_ctx) => [{ type: "link", href: "/", label: "Main" }])
 
   .done();

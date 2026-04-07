@@ -29,6 +29,14 @@ watch(
   },
 );
 
+// Clear selected feature when sequence type changes
+watch(
+  () => app.model.data.sequenceType,
+  () => {
+    app.model.data.feature = undefined;
+  },
+);
+
 // Auto-select feature when featureOptions change
 watch(
   () => app.model.outputs.featureOptions,
