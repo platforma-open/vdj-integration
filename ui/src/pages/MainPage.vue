@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import strings from "@milaboratories/strings";
 import {
+  PlAccordionSection,
   PlAgDataTableV2,
   PlBlockPage,
   PlBtnGhost,
@@ -8,10 +9,12 @@ import {
   PlDropdown,
   PlDropdownRef,
   PlMaskIcon24,
+  PlNumberField,
+  PlSectionSeparator,
   PlSlideModal,
   usePlDataTableSettingsV2,
 } from "@platforma-sdk/ui-vue";
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useApp } from "../app";
 
 const app = useApp();
@@ -29,23 +32,29 @@ watch(
   },
 );
 
-// Clear selected feature when sequence type changes
-watch(
-  () => app.model.data.sequenceType,
-  () => {
-    app.model.data.feature = undefined;
-  },
-);
+// Feature options for the currently selected sequence type, derived locally
+// from a single server-computed map of options for both alphabets. This
+// avoids a server round-trip when toggling sequence type.
+const featureOptions = computed(() => {
+  const byType = app.model.outputs.featureOptionsByType;
+  if (!byType) return [];
+  return byType[app.model.data.sequenceType] ?? [];
+});
 
-// Auto-select feature when featureOptions change
+// Auto-select first available feature whenever the options for the current
+// sequence type change, or when the current selection becomes invalid.
 watch(
-  () => app.model.outputs.featureOptions,
+  featureOptions,
   (options) => {
-    if (!options || options.length === 0) return;
+    if (!options || options.length === 0) {
+      app.model.data.feature = undefined;
+      return;
+    }
     const current = app.model.data.feature;
-    if (current && options.some((o: { value: string }) => o.value === current)) return;
+    if (current && options.some((o) => o.value === current)) return;
     app.model.data.feature = options[0].value;
   },
+  { immediate: true },
 );
 
 const sequenceTypeOptions = [
@@ -102,10 +111,31 @@ const tableSettings = usePlDataTableSettingsV2({
       />
       <PlDropdown
         v-model="app.model.data.feature"
-        :options="app.model.outputs.featureOptions ?? []"
+        :options="featureOptions"
         label="Feature"
         :disabled="!app.model.data.targetRef || !app.model.data.referenceRef"
       />
+      <PlAccordionSection label="Advanced Settings">
+        <PlSectionSeparator>Resource Allocation</PlSectionSeparator>
+        <PlNumberField
+          v-model="app.model.data.mem"
+          label="Memory (GiB)"
+          :minValue="1"
+          :step="1"
+          :maxValue="1012"
+        >
+          <template #tooltip> Sets the amount of memory to use for the computation. </template>
+        </PlNumberField>
+        <PlNumberField
+          v-model="app.model.data.cpu"
+          label="CPU (cores)"
+          :minValue="1"
+          :step="1"
+          :maxValue="128"
+        >
+          <template #tooltip> Sets the number of CPU cores to use for the computation. </template>
+        </PlNumberField>
+      </PlAccordionSection>
     </PlSlideModal>
   </PlBlockPage>
 </template>

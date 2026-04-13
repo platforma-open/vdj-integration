@@ -76,6 +76,16 @@ wf.body(func(args) {
 	blockId := wf.blockId().getDataAsJson()
 	columns := args.columns
 
+	// Resource configuration
+	mem := "8GiB"
+	cpu := 2
+	if !is_undefined(args.mem) {
+		mem = string(args.mem) + "GiB"
+	}
+	if !is_undefined(args.cpu) {
+		cpu = args.cpu
+	}
+
 	targetSpec := columns.getSpec(args.targetRef)
 	referenceSpec := columns.getSpec(args.referenceRef)
 
@@ -84,8 +94,8 @@ wf.body(func(args) {
 
 	// Build target TSV
 	targetTsvBuilder := pframes.tsvFileBuilder()
-	targetTsvBuilder.mem("32GiB")
-	targetTsvBuilder.cpu(4)
+	targetTsvBuilder.mem(mem)
+	targetTsvBuilder.cpu(cpu)
 	targetTsvBuilder.setAxisHeader(targetAxisSpec.name, "clonotypeKey")
 
 	targetSeqs := columns.getColumns("targetSequences")
@@ -104,8 +114,8 @@ wf.body(func(args) {
 
 	// Build reference TSV
 	refTsvBuilder := pframes.tsvFileBuilder()
-	refTsvBuilder.mem("32GiB")
-	refTsvBuilder.cpu(4)
+	refTsvBuilder.mem(mem)
+	refTsvBuilder.cpu(cpu)
 	refTsvBuilder.setAxisHeader(referenceAxisSpec.name, "clonotypeKey")
 
 	refSeqs := columns.getColumns("refSequences")
@@ -126,6 +136,8 @@ wf.body(func(args) {
 	sw := assets.importSoftware("@platforma-open/milaboratories.vdj-integration.software:match-clonotypes")
 	python := exec.builder().
 		software(sw).
+		mem(mem).
+		cpu(cpu).
 		addFile("target.tsv", targetTsv).
 		addFile("reference.tsv", refTsv).
 		arg("--target").arg("target.tsv").
@@ -146,14 +158,14 @@ wf.body(func(args) {
 		toTargetTsv: python.getFile("toTarget.tsv"),
 		targetMatchCountTsv: python.getFile("targetMatchCount.tsv"),
 		refMatchCountTsv: python.getFile("refMatchCount.tsv")
-	}, targetAxisSpec, referenceAxisSpec, blockId)
+	}, targetAxisSpec, referenceAxisSpec, blockId, mem, cpu)
 
 	// Build output and export pFrames
 	outputPFrames := outputs.buildOutputPFrames(
 		matchResults,
 		{ seqs: targetSeqs, vGenes: targetVGenes, jGenes: targetJGenes },
 		{ seqs: refSeqs, vGenes: refVGenes, jGenes: refJGenes },
-		targetAxisSpec, referenceAxisSpec, blockId
+		targetAxisSpec, referenceAxisSpec, blockId, mem, cpu
 	)
 
 	return {

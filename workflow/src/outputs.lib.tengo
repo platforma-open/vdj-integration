@@ -10,20 +10,24 @@ pframes := import("@platforma-sdk/workflow-tengo:pframes")
  * @param targetAxisSpec: axis spec for target clonotype key
  * @param referenceAxisSpec: axis spec for reference clonotype key
  * @param blockId: string block id for domain tagging
+ * @param mem: memory string for conversions (e.g., "8GiB")
+ * @param cpu: cpu cores for conversions
  * @return map with keys toReferencePf, toTargetPf, targetMatchCountPf, refMatchCountPf
  */
-importMatchResults := func(tsvFiles, targetAxisSpec, referenceAxisSpec, blockId) {
-	defaultConvMem := "8GiB"
-	defaultConvCpu := 1
+importMatchResults := func(tsvFiles, targetAxisSpec, referenceAxisSpec, blockId, mem, cpu) {
+	defaultConvMem := mem
+	defaultConvCpu := cpu
 
 	// Import toReference linker: referenceAxis -> targetAxis
 	toReferencePf := xsv.importFile(tsvFiles.toReferenceTsv, "tsv", {
-		axes: [{
+		axes: [
+		{
+            column: "targetKey",
+            spec: targetAxisSpec
+        },
+		{
 			column: "referenceKey",
 			spec: referenceAxisSpec
-		}, {
-			column: "targetKey",
-			spec: targetAxisSpec
 		}],
 		columns: [{
 			column: "link",
@@ -47,12 +51,14 @@ importMatchResults := func(tsvFiles, targetAxisSpec, referenceAxisSpec, blockId)
 
 	// Import toTarget linker: targetAxis -> referenceAxis
 	toTargetPf := xsv.importFile(tsvFiles.toTargetTsv, "tsv", {
-		axes: [{
+		axes: [
+		{
+            column: "referenceKey",
+        	spec: referenceAxisSpec
+        },
+		{
 			column: "targetKey",
 			spec: targetAxisSpec
-		}, {
-			column: "referenceKey",
-			spec: referenceAxisSpec
 		}],
 		columns: [{
 			column: "link",
@@ -64,8 +70,7 @@ importMatchResults := func(tsvFiles, targetAxisSpec, referenceAxisSpec, blockId)
 				},
 				annotations: {
 					"pl7.app/isLinkerColumn": "true",
-					"pl7.app/table/visibility": "hidden",
-					"pl7.app/linker/anchorAxisIndex": "0"
+					"pl7.app/table/visibility": "hidden"
 				}
 			}
 		}],
@@ -170,11 +175,13 @@ importMatchResults := func(tsvFiles, targetAxisSpec, referenceAxisSpec, blockId)
  * @param targetAxisSpec: axis spec for target clonotype key
  * @param referenceAxisSpec: axis spec for reference clonotype key
  * @param blockId: string block id for domain tagging
+ * @param mem: memory string (e.g., "32GiB")
+ * @param cpu: cpu cores
  * @return map with keys resultsPf, exportPf
  */
-buildOutputPFrames := func(matchResults, targetCols, refCols, targetAxisSpec, referenceAxisSpec, blockId) {
-	defaultConvMem := "16GiB"
-	defaultConvCpu := 1
+buildOutputPFrames := func(matchResults, targetCols, refCols, targetAxisSpec, referenceAxisSpec, blockId, mem, cpu) {
+	defaultConvMem := mem
+	defaultConvCpu := cpu
 
 	toTargetPf := matchResults.toTargetPf
 	targetMatchCountPf := matchResults.targetMatchCountPf
@@ -182,8 +189,8 @@ buildOutputPFrames := func(matchResults, targetCols, refCols, targetAxisSpec, re
 
 	// -- Build flat joined parquet for the UI results table --
 	resultsTableBuilder := pframes.parquetFileBuilder()
-	resultsTableBuilder.mem("32GiB")
-	resultsTableBuilder.cpu(4)
+	resultsTableBuilder.mem(mem)
+	resultsTableBuilder.cpu(cpu)
 	resultsTableBuilder.setAxisHeader(targetAxisSpec.name, "targetKey")
 	resultsTableBuilder.setAxisHeader(referenceAxisSpec.name, "refKey")
 

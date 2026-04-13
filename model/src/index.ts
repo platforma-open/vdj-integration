@@ -14,6 +14,8 @@ export type BlockData = {
   referenceRef?: PlRef;
   sequenceType: "nucleotide" | "aminoacid";
   feature?: string;
+  mem?: number;
+  cpu?: number;
   tableState: PlDataTableStateV2;
 };
 
@@ -22,6 +24,8 @@ export type BlockArgs = {
   referenceRef: PlRef;
   sequenceType: "nucleotide" | "aminoacid";
   feature: string;
+  mem?: number;
+  cpu?: number;
 };
 
 const datasetOptionPatterns = [
@@ -51,7 +55,7 @@ export function getDefaultBlockLabel(data: { targetLabel?: string; referenceLabe
 export const blockDataModel = new DataModelBuilder().from<BlockData>("Ver_2026_03_27").init(() => ({
   defaultBlockLabel: getDefaultBlockLabel({}),
   customBlockLabel: "",
-  sequenceType: "nucleotide" as const,
+  sequenceType: "aminoacid" as const,
   tableState: createPlDataTableStateV2(),
 }));
 
@@ -67,6 +71,8 @@ export const platforma = BlockModelV3.create(blockDataModel)
       referenceRef: data.referenceRef,
       sequenceType: data.sequenceType,
       feature: data.feature,
+      mem: data.mem,
+      cpu: data.cpu,
     };
   })
 
@@ -84,12 +90,10 @@ export const platforma = BlockModelV3.create(blockDataModel)
     return options.filter((o) => !plRefsEqual(o.ref, targetRef));
   })
 
-  .output("featureOptions", (ctx) => {
+  .output("featureOptionsByType", (ctx) => {
     const targetRef = ctx.data.targetRef;
     const referenceRef = ctx.data.referenceRef;
     if (targetRef === undefined || referenceRef === undefined) return undefined;
-
-    const sequenceType = ctx.data.sequenceType;
 
     const isTargetSingleCell =
       ctx.resultPool.getPColumnSpecByRef(targetRef)?.axesSpec[1].name ===
@@ -98,53 +102,52 @@ export const platforma = BlockModelV3.create(blockDataModel)
       ctx.resultPool.getPColumnSpecByRef(referenceRef)?.axesSpec[1].name ===
       "pl7.app/vdj/scClonotypeKey";
 
-    const targetDomain: Record<string, string> = {
-      "pl7.app/alphabet": sequenceType,
-    };
-    if (isTargetSingleCell) {
-      targetDomain["pl7.app/vdj/scClonotypeChain/index"] = "primary";
-    }
-
-    const refDomain: Record<string, string> = {
-      "pl7.app/alphabet": sequenceType,
-    };
-    if (isRefSingleCell) {
-      refDomain["pl7.app/vdj/scClonotypeChain/index"] = "primary";
-    }
-
-    const targetCols = ctx.resultPool.getAnchoredPColumns({ main: targetRef }, [
-      { name: "pl7.app/vdj/sequence", domain: targetDomain },
-    ]);
-
-    const refCols = ctx.resultPool.getAnchoredPColumns({ main: referenceRef }, [
-      { name: "pl7.app/vdj/sequence", domain: refDomain },
-    ]);
-
-    if (targetCols === undefined || refCols === undefined) return undefined;
-
-    const extractFeatures = (cols: typeof targetCols) => {
-      const features = new Set<string>();
-      for (const col of cols) {
-        const feature = col.spec?.domain?.["pl7.app/vdj/feature"];
-        if (feature) features.add(feature);
-      }
-      return features;
-    };
-
-    const targetFeatures = extractFeatures(targetCols);
-    const refFeatures = extractFeatures(refCols);
-
-    const intersection = [...targetFeatures].filter((f) => refFeatures.has(f));
-
     const priority: Record<string, number> = { VDJRegion: 0, VDJRegionInFrame: 1, CDR3: 2 };
-    intersection.sort((a, b) => {
-      const pa = priority[a] ?? 100;
-      const pb = priority[b] ?? 100;
-      if (pa !== pb) return pa - pb;
-      return a.localeCompare(b);
-    });
 
-    return intersection.map((f) => ({ label: f, value: f }));
+    const featuresForAlphabet = (
+      alphabet: "nucleotide" | "aminoacid",
+    ): { label: string; value: string }[] | undefined => {
+      const targetDomain: Record<string, string> = { "pl7.app/alphabet": alphabet };
+      if (isTargetSingleCell) targetDomain["pl7.app/vdj/scClonotypeChain/index"] = "primary";
+
+      const refDomain: Record<string, string> = { "pl7.app/alphabet": alphabet };
+      if (isRefSingleCell) refDomain["pl7.app/vdj/scClonotypeChain/index"] = "primary";
+
+      const targetCols = ctx.resultPool.getAnchoredPColumns({ main: targetRef }, [
+        { name: "pl7.app/vdj/sequence", domain: targetDomain },
+      ]);
+      const refCols = ctx.resultPool.getAnchoredPColumns({ main: referenceRef }, [
+        { name: "pl7.app/vdj/sequence", domain: refDomain },
+      ]);
+      if (targetCols === undefined || refCols === undefined) return undefined;
+
+      const extractFeatures = (cols: typeof targetCols) => {
+        const features = new Set<string>();
+        for (const col of cols) {
+          const feature = col.spec?.domain?.["pl7.app/vdj/feature"];
+          if (feature) features.add(feature);
+        }
+        return features;
+      };
+
+      const targetFeatures = extractFeatures(targetCols);
+      const refFeatures = extractFeatures(refCols);
+      const intersection = [...targetFeatures].filter((f) => refFeatures.has(f));
+
+      intersection.sort((a, b) => {
+        const pa = priority[a] ?? 100;
+        const pb = priority[b] ?? 100;
+        if (pa !== pb) return pa - pb;
+        return a.localeCompare(b);
+      });
+
+      return intersection.map((f) => ({ label: f, value: f }));
+    };
+
+    return {
+      nucleotide: featuresForAlphabet("nucleotide"),
+      aminoacid: featuresForAlphabet("aminoacid"),
+    };
   })
 
   .outputWithStatus("resultsTable", (ctx) => {
