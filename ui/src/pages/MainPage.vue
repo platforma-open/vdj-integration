@@ -58,8 +58,8 @@ watch(
 );
 
 const sequenceTypeOptions = [
+  { label: "Aminoacid", value: "aminoacid" },
   { label: "Nucleotide", value: "nucleotide" },
-  { label: "Amino acid", value: "aminoacid" },
 ];
 
 const tableSettings = usePlDataTableSettingsV2({
