@@ -102,7 +102,7 @@ def main():
     ).select([
         pl.col("clonotypeKey").alias("targetKey"),
         pl.col("clonotypeKey_ref").alias("referenceKey")
-    ]).unique()
+    ]).unique().sort("targetKey", "referenceKey")
 
     if pairs.height == 0:
         # No matches found — write empty output files
@@ -126,26 +126,26 @@ def main():
     to_reference = ref_best.select([
         pl.col("referenceKey"),
         pl.col("targetKey")
-    ]).with_columns(pl.lit(1).alias("link"))
+    ]).with_columns(pl.lit(1).alias("link")).sort("referenceKey", "targetKey")
     to_reference.write_csv(args.to_reference, separator="\t")
 
     # toTarget.tsv: targetKey -> referenceKey linker (from best match per target)
     to_target = target_best.select([
         pl.col("targetKey"),
         pl.col("referenceKey")
-    ]).with_columns(pl.lit(1).alias("link"))
+    ]).with_columns(pl.lit(1).alias("link")).sort("targetKey", "referenceKey")
     to_target.write_csv(args.to_target, separator="\t")
 
     # targetMatchCount.tsv
     target_match_count = target_counts.with_columns(
         (1.0 / pl.col("matchCount")).alias("confidence")
-    ).rename({"targetKey": "clonotypeKey"})
+    ).rename({"targetKey": "clonotypeKey"}).sort("clonotypeKey")
     target_match_count.write_csv(args.target_match_count, separator="\t")
 
     # refMatchCount.tsv
     ref_match_count = ref_counts.with_columns(
         (1.0 / pl.col("matchCount")).alias("confidence")
-    ).rename({"referenceKey": "clonotypeKey"})
+    ).rename({"referenceKey": "clonotypeKey"}).sort("clonotypeKey")
     ref_match_count.write_csv(args.ref_match_count, separator="\t")
 
 
