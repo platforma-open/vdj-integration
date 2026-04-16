@@ -57,26 +57,60 @@ def melt_chains(df: pl.DataFrame, prefix: str) -> pl.DataFrame:
     return melted
 
 
-def build_match_key(df: pl.DataFrame) -> pl.DataFrame:
-    """Add stripped V/J gene columns and match_key."""
-    df = df.with_columns(
-        pl.col("vGene").map_elements(strip_allele, return_dtype=pl.Utf8).alias("vGene_stripped"),
-        pl.col("jGene").map_elements(strip_allele, return_dtype=pl.Utf8).alias("jGene_stripped"),
-    )
-    df = df.with_columns(
-        (pl.col("sequence") + "|" + pl.col("vGene_stripped") + "|" + pl.col("jGene_stripped")).alias("match_key")
-    )
+def build_match_key(df: pl.DataFrame, use_gene_matching: bool = True) -> pl.DataFrame:
+    """Add match_key column. When use_gene_matching is True, includes stripped V/J genes."""
+    if use_gene_matching:
+        df = df.with_columns(
+            pl.col("vGene").map_elements(strip_allele, return_dtype=pl.Utf8).alias("vGene_stripped"),
+            pl.col("jGene").map_elements(strip_allele, return_dtype=pl.Utf8).alias("jGene_stripped"),
+        )
+        df = df.with_columns(
+            (pl.col("sequence") + "|" + pl.col("vGene_stripped") + "|" + pl.col("jGene_stripped")).alias("match_key")
+        )
+    else:
+        df = df.with_columns(
+            pl.col("sequence").alias("match_key")
+        )
     return df
+
+
+def aggregate_abundance(path: str) -> pl.DataFrame:
+    """Read per-sample abundance TSV and sum across samples per clonotype."""
+    df = read_tsv(path)
+    return df.group_by("clonotypeKey").agg(
+        pl.col("abundance").sum().alias("totalAbundance")
+    )
+
+
+def write_empty_outputs(args):
+    """Write empty output files when no matches are found."""
+    pl.DataFrame({"referenceKey": [], "targetKey": [], "link": []}).write_csv(args.to_reference, separator="\t")
+    pl.DataFrame({"targetKey": [], "referenceKey": [], "link": []}).write_csv(args.to_target, separator="\t")
+    pl.DataFrame({"clonotypeKey": [], "matchCount": [], "confidence": []}).write_csv(args.target_match_count, separator="\t")
+    pl.DataFrame({"clonotypeKey": [], "matchCount": [], "confidence": []}).write_csv(args.ref_match_count, separator="\t")
+
+
+def write_stats(path: str, target_total: int, target_matched: int, ref_total: int, ref_matched: int):
+    """Write match statistics TSV."""
+    pl.DataFrame({
+        "side": ["target", "reference"],
+        "matched": [target_matched, ref_matched],
+        "total": [target_total, ref_total]
+    }).write_csv(path, separator="\t")
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--target", required=True, help="Path to target TSV")
     parser.add_argument("--reference", required=True, help="Path to reference TSV")
+    parser.add_argument("--target-abundance", required=True, help="Path to target abundance TSV")
+    parser.add_argument("--ref-abundance", required=True, help="Path to reference abundance TSV")
     parser.add_argument("--to-reference", required=True, help="Output path for toReference linker")
     parser.add_argument("--to-target", required=True, help="Output path for toTarget linker")
     parser.add_argument("--target-match-count", required=True, help="Output path for target match counts")
     parser.add_argument("--ref-match-count", required=True, help="Output path for reference match counts")
+    parser.add_argument("--stats", required=True, help="Output path for match statistics")
+    parser.add_argument("--no-gene-matching", action="store_true", help="Match by sequence only, ignoring V/J genes")
     return parser.parse_args()
 
 
@@ -86,13 +120,21 @@ def main():
     target_df = read_tsv(args.target)
     ref_df = read_tsv(args.reference)
 
+    target_total_clonotypes = target_df["clonotypeKey"].n_unique()
+    ref_total_clonotypes = ref_df["clonotypeKey"].n_unique()
+
+    # Read and aggregate abundance per clonotype (sum across samples)
+    target_abundance = aggregate_abundance(args.target_abundance)
+    ref_abundance = aggregate_abundance(args.ref_abundance)
+
     # Melt per-chain columns into rows
     target_melted = melt_chains(target_df, "target")
     ref_melted = melt_chains(ref_df, "reference")
 
     # Build match keys
-    target_keyed = build_match_key(target_melted)
-    ref_keyed = build_match_key(ref_melted)
+    use_genes = not args.no_gene_matching
+    target_keyed = build_match_key(target_melted, use_genes)
+    ref_keyed = build_match_key(ref_melted, use_genes)
 
     # Join on match_key
     pairs = target_keyed.select(["clonotypeKey", "match_key"]).join(
@@ -105,48 +147,84 @@ def main():
     ]).unique().sort("targetKey", "referenceKey")
 
     if pairs.height == 0:
-        # No matches found — write empty output files
-        pl.DataFrame({"referenceKey": [], "targetKey": [], "link": []}).write_csv(args.to_reference, separator="\t")
-        pl.DataFrame({"targetKey": [], "referenceKey": [], "link": []}).write_csv(args.to_target, separator="\t")
-        pl.DataFrame({"clonotypeKey": [], "matchCount": [], "confidence": []}).write_csv(args.target_match_count, separator="\t")
-        pl.DataFrame({"clonotypeKey": [], "matchCount": [], "confidence": []}).write_csv(args.ref_match_count, separator="\t")
+        write_empty_outputs(args)
+        write_stats(args.stats, target_total_clonotypes, 0, ref_total_clonotypes, 0)
         return
 
-    # For each target key, count how many reference keys match
+    # Match counts per side
     target_counts = pairs.group_by("targetKey").agg(pl.col("referenceKey").count().alias("matchCount"))
-    # Pick best reference for each target (first lexicographic)
-    target_best = pairs.sort("referenceKey").group_by("targetKey").first()
-
-    # For each reference key, count how many target keys match
     ref_counts = pairs.group_by("referenceKey").agg(pl.col("targetKey").count().alias("matchCount"))
-    # Pick best target for each reference (first lexicographic)
-    ref_best = pairs.sort("targetKey").group_by("referenceKey").first()
 
-    # toReference.tsv: referenceKey -> targetKey linker (from best match per reference)
+    # --- Target → Reference direction (use reference abundance to rank) ---
+    pairs_with_ref_abund = pairs.join(
+        ref_abundance.rename({"clonotypeKey": "referenceKey", "totalAbundance": "refAbundance"}),
+        on="referenceKey", how="left"
+    )
+    # Best reference per target: highest abundance
+    target_best = pairs_with_ref_abund.sort("refAbundance", descending=True).group_by("targetKey").first()
+    # Confidence: best_abundance / sum(all candidate abundances)
+    target_abund_sum = pairs_with_ref_abund.group_by("targetKey").agg(
+        pl.col("refAbundance").sum().alias("sumRefAbundance")
+    )
+    target_best = target_best.join(target_abund_sum, on="targetKey")
+    target_best = target_best.with_columns(
+        (pl.col("refAbundance") / pl.col("sumRefAbundance")).alias("confidence")
+    )
+
+    # --- Reference → Target direction (use target abundance to rank) ---
+    pairs_with_target_abund = pairs.join(
+        target_abundance.rename({"clonotypeKey": "targetKey", "totalAbundance": "targetAbundance"}),
+        on="targetKey", how="left"
+    )
+    # Best target per reference: highest abundance
+    ref_best = pairs_with_target_abund.sort("targetAbundance", descending=True).group_by("referenceKey").first()
+    # Confidence: best_abundance / sum(all candidate abundances)
+    ref_abund_sum = pairs_with_target_abund.group_by("referenceKey").agg(
+        pl.col("targetAbundance").sum().alias("sumTargetAbundance")
+    )
+    ref_best = ref_best.join(ref_abund_sum, on="referenceKey")
+    ref_best = ref_best.with_columns(
+        (pl.col("targetAbundance") / pl.col("sumTargetAbundance")).alias("confidence")
+    )
+
+    # --- Write linker outputs (confidence as link value) ---
+
+    # toReference.tsv
     to_reference = ref_best.select([
         pl.col("referenceKey"),
-        pl.col("targetKey")
-    ]).with_columns(pl.lit(1).alias("link")).sort("referenceKey", "targetKey")
+        pl.col("targetKey"),
+        pl.col("confidence").alias("link")
+    ]).sort("referenceKey", "targetKey")
     to_reference.write_csv(args.to_reference, separator="\t")
 
-    # toTarget.tsv: targetKey -> referenceKey linker (from best match per target)
+    # toTarget.tsv
     to_target = target_best.select([
         pl.col("targetKey"),
-        pl.col("referenceKey")
-    ]).with_columns(pl.lit(1).alias("link")).sort("targetKey", "referenceKey")
+        pl.col("referenceKey"),
+        pl.col("confidence").alias("link")
+    ]).sort("targetKey", "referenceKey")
     to_target.write_csv(args.to_target, separator="\t")
 
+    # --- Write match count outputs ---
+
     # targetMatchCount.tsv
-    target_match_count = target_counts.with_columns(
-        (1.0 / pl.col("matchCount")).alias("confidence")
-    ).rename({"targetKey": "clonotypeKey"}).sort("clonotypeKey")
+    target_match_count = target_counts.join(
+        target_best.select(["targetKey", "confidence"]), on="targetKey", how="left"
+    ).rename({"targetKey": "clonotypeKey"}).select(
+        ["clonotypeKey", "matchCount", "confidence"]
+    ).sort("clonotypeKey")
     target_match_count.write_csv(args.target_match_count, separator="\t")
 
     # refMatchCount.tsv
-    ref_match_count = ref_counts.with_columns(
-        (1.0 / pl.col("matchCount")).alias("confidence")
-    ).rename({"referenceKey": "clonotypeKey"}).sort("clonotypeKey")
+    ref_match_count = ref_counts.join(
+        ref_best.select(["referenceKey", "confidence"]), on="referenceKey", how="left"
+    ).rename({"referenceKey": "clonotypeKey"}).select(
+        ["clonotypeKey", "matchCount", "confidence"]
+    ).sort("clonotypeKey")
     ref_match_count.write_csv(args.ref_match_count, separator="\t")
+
+    # --- Write statistics ---
+    write_stats(args.stats, target_total_clonotypes, target_counts.height, ref_total_clonotypes, ref_counts.height)
 
 
 if __name__ == "__main__":

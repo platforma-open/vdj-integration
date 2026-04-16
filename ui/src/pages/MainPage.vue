@@ -6,6 +6,7 @@ import {
   PlBlockPage,
   PlBtnGhost,
   PlBtnGroup,
+  PlCheckbox,
   PlDropdown,
   PlDropdownRef,
   PlMaskIcon24,
@@ -57,6 +58,20 @@ watch(
   { immediate: true },
 );
 
+// Auto-detect sequence type: prefer nucleotide when available (fires once)
+const hasAutoDetectedSeqType = ref(false);
+watch(
+  () => app.model.outputs.featureOptionsByType,
+  (byType) => {
+    if (!byType || hasAutoDetectedSeqType.value) return;
+    const nt = byType.nucleotide;
+    if (nt && nt.length > 0) {
+      app.model.data.sequenceType = "nucleotide";
+    }
+    hasAutoDetectedSeqType.value = true;
+  },
+);
+
 const sequenceTypeOptions = [
   { label: "Aminoacid", value: "aminoacid" },
   { label: "Nucleotide", value: "nucleotide" },
@@ -81,6 +96,19 @@ const tableSettings = usePlDataTableSettingsV2({
         </template>
       </PlBtnGhost>
     </template>
+    <div
+      v-if="app.model.outputs.matchStats"
+      style="margin-bottom: 12px; font-size: 13px; opacity: 0.7"
+    >
+      Target: {{ app.model.outputs.matchStats.target.matched }}/{{
+        app.model.outputs.matchStats.target.total
+      }}
+      ({{ app.model.outputs.matchStats.target.pct }}%) matched &nbsp;&middot;&nbsp; Reference:
+      {{ app.model.outputs.matchStats.reference.matched }}/{{
+        app.model.outputs.matchStats.reference.total
+      }}
+      ({{ app.model.outputs.matchStats.reference.pct }}%) matched
+    </div>
     <PlAgDataTableV2
       v-model="app.model.data.tableState"
       :settings="tableSettings"
@@ -115,6 +143,7 @@ const tableSettings = usePlDataTableSettingsV2({
         label="Feature"
         :disabled="!app.model.data.targetRef || !app.model.data.referenceRef"
       />
+      <PlCheckbox v-model="app.model.data.useGeneMatching"> Use V/J gene matching </PlCheckbox>
       <PlAccordionSection label="Advanced Settings">
         <PlSectionSeparator>Resource Allocation</PlSectionSeparator>
         <PlNumberField

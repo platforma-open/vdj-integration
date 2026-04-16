@@ -14,6 +14,7 @@ export type BlockData = {
   referenceRef?: PlRef;
   sequenceType: "nucleotide" | "aminoacid";
   feature?: string;
+  useGeneMatching: boolean;
   mem?: number;
   cpu?: number;
   tableState: PlDataTableStateV2;
@@ -24,6 +25,7 @@ export type BlockArgs = {
   referenceRef: PlRef;
   sequenceType: "nucleotide" | "aminoacid";
   feature: string;
+  useGeneMatching: boolean;
   mem?: number;
   cpu?: number;
 };
@@ -56,6 +58,7 @@ export const blockDataModel = new DataModelBuilder().from<BlockData>("Ver_2026_0
   defaultBlockLabel: getDefaultBlockLabel({}),
   customBlockLabel: "",
   sequenceType: "aminoacid" as const,
+  useGeneMatching: true,
   tableState: createPlDataTableStateV2(),
 }));
 
@@ -71,6 +74,7 @@ export const platforma = BlockModelV3.create(blockDataModel)
       referenceRef: data.referenceRef,
       sequenceType: data.sequenceType,
       feature: data.feature,
+      useGeneMatching: data.useGeneMatching,
       mem: data.mem,
       cpu: data.cpu,
     };
@@ -154,6 +158,30 @@ export const platforma = BlockModelV3.create(blockDataModel)
     const cols = ctx.outputs?.resolve("resultsPf")?.getPColumns();
     if (cols === undefined) return undefined;
     return createPlDataTableV2(ctx, cols, ctx.data.tableState);
+  })
+
+  .output("matchStats", (ctx) => {
+    const raw = ctx.outputs?.resolve("stats")?.getDataAsString?.();
+    if (!raw) return undefined;
+    const lines = raw.trim().split("\n");
+    if (lines.length < 2) return undefined;
+    const header = lines[0].split("\t");
+    const sideIdx = header.indexOf("side");
+    const matchedIdx = header.indexOf("matched");
+    const totalIdx = header.indexOf("total");
+    if (sideIdx < 0 || matchedIdx < 0 || totalIdx < 0) return undefined;
+    const result: Record<string, { matched: number; total: number; pct: string }> = {};
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split("\t");
+      const matched = parseInt(cols[matchedIdx], 10);
+      const total = parseInt(cols[totalIdx], 10);
+      result[cols[sideIdx]] = {
+        matched,
+        total,
+        pct: total > 0 ? ((matched / total) * 100).toFixed(1) : "0.0",
+      };
+    }
+    return result;
   })
 
   .output("isRunning", (ctx) => ctx.outputs?.getIsReadyOrError() === false)

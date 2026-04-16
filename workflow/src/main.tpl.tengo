@@ -11,6 +11,26 @@ wf.prepare(func(args) {
 	bundleBuilder.addAnchor("target", args.targetRef)
 	bundleBuilder.addAnchor("reference", args.referenceRef)
 
+	// target abundance (for confidence scoring and collision resolution)
+	bundleBuilder.addSingle({
+		axes: [{ anchor: "target", idx: 0 }, { anchor: "target", idx: 1 }],
+		annotations: {
+			"pl7.app/isAbundance": "true",
+			"pl7.app/abundance/normalized": "false",
+			"pl7.app/abundance/isPrimary": "true"
+		}
+	}, "targetAbundance")
+
+	// reference abundance
+	bundleBuilder.addSingle({
+		axes: [{ anchor: "reference", idx: 0 }, { anchor: "reference", idx: 1 }],
+		annotations: {
+			"pl7.app/isAbundance": "true",
+			"pl7.app/abundance/normalized": "false",
+			"pl7.app/abundance/isPrimary": "true"
+		}
+	}, "referenceAbundance")
+
 	// target sequences
 	bundleBuilder.addMulti({
 		axes: [{ anchor: "target", idx: 1 }],
@@ -132,24 +152,53 @@ wf.body(func(args) {
 	}
 	refTsv := refTsvBuilder.build()
 
+	// Build abundance TSVs (sampleId + clonotypeKey + abundance)
+	targetAbundanceCol := columns.getColumn("targetAbundance")
+	targetAbundanceTsvBuilder := pframes.tsvFileBuilder()
+	targetAbundanceTsvBuilder.mem(mem)
+	targetAbundanceTsvBuilder.cpu(cpu)
+	targetAbundanceTsvBuilder.setAxisHeader(targetSpec.axesSpec[0].name, "sampleId")
+	targetAbundanceTsvBuilder.setAxisHeader(targetAxisSpec.name, "clonotypeKey")
+	targetAbundanceTsvBuilder.add(targetAbundanceCol, {header: "abundance"})
+	targetAbundanceTsv := targetAbundanceTsvBuilder.build()
+
+	refAbundanceCol := columns.getColumn("referenceAbundance")
+	refAbundanceTsvBuilder := pframes.tsvFileBuilder()
+	refAbundanceTsvBuilder.mem(mem)
+	refAbundanceTsvBuilder.cpu(cpu)
+	refAbundanceTsvBuilder.setAxisHeader(referenceSpec.axesSpec[0].name, "sampleId")
+	refAbundanceTsvBuilder.setAxisHeader(referenceAxisSpec.name, "clonotypeKey")
+	refAbundanceTsvBuilder.add(refAbundanceCol, {header: "abundance"})
+	refAbundanceTsv := refAbundanceTsvBuilder.build()
+
 	// Run Python matching
 	sw := assets.importSoftware("@platforma-open/milaboratories.vdj-integration.software:match-clonotypes")
-	python := exec.builder().
+	pythonBuilder := exec.builder().
 		software(sw).
 		mem(mem).
 		cpu(cpu).
 		addFile("target.tsv", targetTsv).
 		addFile("reference.tsv", refTsv).
+		addFile("target_abundance.tsv", targetAbundanceTsv).
+		addFile("ref_abundance.tsv", refAbundanceTsv).
 		arg("--target").arg("target.tsv").
 		arg("--reference").arg("reference.tsv").
+		arg("--target-abundance").arg("target_abundance.tsv").
+		arg("--ref-abundance").arg("ref_abundance.tsv").
 		arg("--to-reference").arg("toReference.tsv").
 		arg("--to-target").arg("toTarget.tsv").
 		arg("--target-match-count").arg("targetMatchCount.tsv").
 		arg("--ref-match-count").arg("refMatchCount.tsv").
+		arg("--stats").arg("stats.tsv")
+	if !args.useGeneMatching {
+		pythonBuilder = pythonBuilder.arg("--no-gene-matching")
+	}
+	python := pythonBuilder.
 		saveFile("toReference.tsv").
 		saveFile("toTarget.tsv").
 		saveFile("targetMatchCount.tsv").
 		saveFile("refMatchCount.tsv").
+		saveFileContent("stats.tsv").
 		run()
 
 	// Import match results into pFrames
@@ -170,7 +219,8 @@ wf.body(func(args) {
 
 	return {
 		outputs: {
-			resultsPf: pframes.exportFrame(outputPFrames.resultsPf)
+			resultsPf: pframes.exportFrame(outputPFrames.resultsPf),
+			stats: python.getFileContent("stats.tsv")
 		},
 		exports: {
 			pf: outputPFrames.exportPf
