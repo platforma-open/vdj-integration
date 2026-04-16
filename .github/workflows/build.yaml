@@ -58,6 +58,8 @@ jobs:
         { "PL_LICENSE": ${{ toJSON(secrets.MI_LICENSE) }},
           "MI_LICENSE": ${{ toJSON(secrets.MI_LICENSE) }},
 
+          "PL_PUBLISH_UNSTABLE": "true",
+
           "NPMJS_TOKEN": ${{ toJSON(secrets.NPMJS_TOKEN) }},
           "PL_CI_TEST_USER": ${{ toJSON(secrets.PL_CI_TEST_USER) }},
           "PL_CI_TEST_PASSWORD": ${{ toJSON(secrets.PL_CI_TEST_PASSWORD) }},
