@@ -1,0 +1,229 @@
+wf := import("@platforma-sdk/workflow-tengo:workflow")
+exec := import("@platforma-sdk/workflow-tengo:exec")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+pframes := import("@platforma-sdk/workflow-tengo:pframes")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+outputs := import(":outputs")
+
+wf.prepare(func(args) {
+	bundleBuilder := wf.createPBundleBuilder()
+	bundleBuilder.ignoreMissingDomains()
+	bundleBuilder.addAnchor("target", args.targetRef)
+	bundleBuilder.addAnchor("reference", args.referenceRef)
+
+	// target abundance (for confidence scoring and collision resolution)
+	bundleBuilder.addSingle({
+		axes: [{ anchor: "target", idx: 0 }, { anchor: "target", idx: 1 }],
+		annotations: {
+			"pl7.app/isAbundance": "true",
+			"pl7.app/abundance/normalized": "false",
+			"pl7.app/abundance/isPrimary": "true"
+		}
+	}, "targetAbundance")
+
+	// reference abundance
+	bundleBuilder.addSingle({
+		axes: [{ anchor: "reference", idx: 0 }, { anchor: "reference", idx: 1 }],
+		annotations: {
+			"pl7.app/isAbundance": "true",
+			"pl7.app/abundance/normalized": "false",
+			"pl7.app/abundance/isPrimary": "true"
+		}
+	}, "referenceAbundance")
+
+	// target sequences
+	bundleBuilder.addMulti({
+		axes: [{ anchor: "target", idx: 1 }],
+		name: "pl7.app/vdj/sequence",
+		domain: {
+			"pl7.app/alphabet": args.sequenceType,
+			"pl7.app/vdj/feature": args.feature
+		}
+	}, "targetSequences")
+
+	// target V genes
+	bundleBuilder.addMulti({
+		axes: [{ anchor: "target", idx: 1 }],
+		name: "pl7.app/vdj/geneHit",
+		domain: {
+			"pl7.app/vdj/reference": "VGene"
+		}
+	}, "targetVGenes")
+
+	// target J genes
+	bundleBuilder.addMulti({
+		axes: [{ anchor: "target", idx: 1 }],
+		name: "pl7.app/vdj/geneHit",
+		domain: {
+			"pl7.app/vdj/reference": "JGene"
+		}
+	}, "targetJGenes")
+
+	// reference sequences
+	bundleBuilder.addMulti({
+		axes: [{ anchor: "reference", idx: 1 }],
+		name: "pl7.app/vdj/sequence",
+		domain: {
+			"pl7.app/alphabet": args.sequenceType,
+			"pl7.app/vdj/feature": args.feature
+		}
+	}, "refSequences")
+
+	// reference V genes
+	bundleBuilder.addMulti({
+		axes: [{ anchor: "reference", idx: 1 }],
+		name: "pl7.app/vdj/geneHit",
+		domain: {
+			"pl7.app/vdj/reference": "VGene"
+		}
+	}, "refVGenes")
+
+	// reference J genes
+	bundleBuilder.addMulti({
+		axes: [{ anchor: "reference", idx: 1 }],
+		name: "pl7.app/vdj/geneHit",
+		domain: {
+			"pl7.app/vdj/reference": "JGene"
+		}
+	}, "refJGenes")
+
+	return {
+		columns: bundleBuilder.build()
+	}
+})
+
+wf.body(func(args) {
+	blockId := wf.blockId().getDataAsJson()
+	columns := args.columns
+
+	// Resource configuration
+	mem := "8GiB"
+	cpu := 2
+	if !is_undefined(args.mem) {
+		mem = string(args.mem) + "GiB"
+	}
+	if !is_undefined(args.cpu) {
+		cpu = args.cpu
+	}
+
+	targetSpec := columns.getSpec(args.targetRef)
+	referenceSpec := columns.getSpec(args.referenceRef)
+
+	targetAxisSpec := targetSpec.axesSpec[1]
+	referenceAxisSpec := referenceSpec.axesSpec[1]
+
+	// Build target TSV
+	targetTsvBuilder := pframes.tsvFileBuilder()
+	targetTsvBuilder.mem(mem)
+	targetTsvBuilder.cpu(cpu)
+	targetTsvBuilder.setAxisHeader(targetAxisSpec.name, "clonotypeKey")
+
+	targetSeqs := columns.getColumns("targetSequences")
+	for i, col in targetSeqs {
+		targetTsvBuilder.add(col, {header: "sequence_" + string(i)})
+	}
+	targetVGenes := columns.getColumns("targetVGenes")
+	for i, col in targetVGenes {
+		targetTsvBuilder.add(col, {header: "vGene_" + string(i)})
+	}
+	targetJGenes := columns.getColumns("targetJGenes")
+	for i, col in targetJGenes {
+		targetTsvBuilder.add(col, {header: "jGene_" + string(i)})
+	}
+	targetTsv := targetTsvBuilder.build()
+
+	// Build reference TSV
+	refTsvBuilder := pframes.tsvFileBuilder()
+	refTsvBuilder.mem(mem)
+	refTsvBuilder.cpu(cpu)
+	refTsvBuilder.setAxisHeader(referenceAxisSpec.name, "clonotypeKey")
+
+	refSeqs := columns.getColumns("refSequences")
+	for i, col in refSeqs {
+		refTsvBuilder.add(col, {header: "sequence_" + string(i)})
+	}
+	refVGenes := columns.getColumns("refVGenes")
+	for i, col in refVGenes {
+		refTsvBuilder.add(col, {header: "vGene_" + string(i)})
+	}
+	refJGenes := columns.getColumns("refJGenes")
+	for i, col in refJGenes {
+		refTsvBuilder.add(col, {header: "jGene_" + string(i)})
+	}
+	refTsv := refTsvBuilder.build()
+
+	// Build abundance TSVs (sampleId + clonotypeKey + abundance)
+	targetAbundanceCol := columns.getColumn("targetAbundance")
+	targetAbundanceTsvBuilder := pframes.tsvFileBuilder()
+	targetAbundanceTsvBuilder.mem(mem)
+	targetAbundanceTsvBuilder.cpu(cpu)
+	targetAbundanceTsvBuilder.setAxisHeader(targetSpec.axesSpec[0].name, "sampleId")
+	targetAbundanceTsvBuilder.setAxisHeader(targetAxisSpec.name, "clonotypeKey")
+	targetAbundanceTsvBuilder.add(targetAbundanceCol, {header: "abundance"})
+	targetAbundanceTsv := targetAbundanceTsvBuilder.build()
+
+	refAbundanceCol := columns.getColumn("referenceAbundance")
+	refAbundanceTsvBuilder := pframes.tsvFileBuilder()
+	refAbundanceTsvBuilder.mem(mem)
+	refAbundanceTsvBuilder.cpu(cpu)
+	refAbundanceTsvBuilder.setAxisHeader(referenceSpec.axesSpec[0].name, "sampleId")
+	refAbundanceTsvBuilder.setAxisHeader(referenceAxisSpec.name, "clonotypeKey")
+	refAbundanceTsvBuilder.add(refAbundanceCol, {header: "abundance"})
+	refAbundanceTsv := refAbundanceTsvBuilder.build()
+
+	// Run Python matching
+	sw := assets.importSoftware("@platforma-open/milaboratories.vdj-integration.software:match-clonotypes")
+	pythonBuilder := exec.builder().
+		software(sw).
+		mem(mem).
+		cpu(cpu).
+		addFile("target.tsv", targetTsv).
+		addFile("reference.tsv", refTsv).
+		addFile("target_abundance.tsv", targetAbundanceTsv).
+		addFile("ref_abundance.tsv", refAbundanceTsv).
+		arg("--target").arg("target.tsv").
+		arg("--reference").arg("reference.tsv").
+		arg("--target-abundance").arg("target_abundance.tsv").
+		arg("--ref-abundance").arg("ref_abundance.tsv").
+		arg("--to-reference").arg("toReference.tsv").
+		arg("--to-target").arg("toTarget.tsv").
+		arg("--target-match-count").arg("targetMatchCount.tsv").
+		arg("--ref-match-count").arg("refMatchCount.tsv").
+		arg("--stats").arg("stats.tsv")
+	if !args.useGeneMatching {
+		pythonBuilder = pythonBuilder.arg("--no-gene-matching")
+	}
+	python := pythonBuilder.
+		saveFile("toReference.tsv").
+		saveFile("toTarget.tsv").
+		saveFile("targetMatchCount.tsv").
+		saveFile("refMatchCount.tsv").
+		saveFileContent("stats.tsv").
+		run()
+
+	// Import match results into pFrames
+	matchResults := outputs.importMatchResults({
+		toReferenceTsv: python.getFile("toReference.tsv"),
+		toTargetTsv: python.getFile("toTarget.tsv"),
+		targetMatchCountTsv: python.getFile("targetMatchCount.tsv"),
+		refMatchCountTsv: python.getFile("refMatchCount.tsv")
+	}, targetAxisSpec, referenceAxisSpec, blockId, mem, cpu)
+
+	// Build output and export pFrames
+	outputPFrames := outputs.buildOutputPFrames(
+		matchResults,
+		{ seqs: targetSeqs, vGenes: targetVGenes, jGenes: targetJGenes },
+		{ seqs: refSeqs, vGenes: refVGenes, jGenes: refJGenes },
+		targetAxisSpec, referenceAxisSpec, blockId, mem, cpu
+	)
+
+	return {
+		outputs: {
+			resultsPf: pframes.exportFrame(outputPFrames.resultsPf),
+			stats: python.getFileContent("stats.tsv")
+		},
+		exports: {
+			pf: outputPFrames.exportPf
+		}
+	}
+})
