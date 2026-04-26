@@ -50,7 +50,7 @@ const datasetOptionConfig = {
 
 export function getDefaultBlockLabel(data: { targetLabel?: string; referenceLabel?: string }) {
   if (data.targetLabel && data.referenceLabel)
-    return `${data.targetLabel} to ${data.referenceLabel}`;
+    return `${data.targetLabel} ↔ ${data.referenceLabel}`;
   return "Select datasets";
 }
 

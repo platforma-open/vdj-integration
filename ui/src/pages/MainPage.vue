@@ -13,6 +13,7 @@ import {
   PlNumberField,
   PlSectionSeparator,
   PlSlideModal,
+  PlTooltip,
   usePlDataTableSettingsV2,
 } from "@platforma-sdk/ui-vue";
 import { computed, ref, watch } from "vue";
@@ -73,7 +74,7 @@ watch(
 );
 
 const sequenceTypeOptions = [
-  { label: "Aminoacid", value: "aminoacid" },
+  { label: "Amino acid", value: "aminoacid" },
   { label: "Nucleotide", value: "nucleotide" },
 ];
 
@@ -120,30 +121,60 @@ const tableSettings = usePlDataTableSettingsV2({
       <PlDropdownRef
         v-model="app.model.data.targetRef"
         :options="app.model.outputs.targetOptions"
-        label="Target dataset"
+        label="Target repertoire"
         clearable
         required
-      />
+      >
+        <template #tooltip>
+          The repertoire whose clonotypes you want to enrich with extra information — usually a deep
+          bulk dataset.
+        </template>
+      </PlDropdownRef>
       <PlDropdownRef
         v-model="app.model.data.referenceRef"
         :options="app.model.outputs.referenceOptions"
-        label="Reference dataset"
+        label="Reference repertoire"
         clearable
         required
-      />
+      >
+        <template #tooltip>
+          Provides clonotype properties (paired chains, liabilities, clusters) that get carried onto
+          matched target clonotypes — usually a single-cell dataset.
+        </template>
+      </PlDropdownRef>
       <PlBtnGroup
         v-model="app.model.data.sequenceType"
         label="Sequence type"
         :options="sequenceTypeOptions"
         compact
-      />
+      >
+        <template #tooltip>
+          Nucleotide is more precise. Switch to amino acid only when one of the datasets has no
+          nucleotide information — for example, an amino-acid-only dataset brought in through the
+          Import VDJ Data block.
+        </template>
+      </PlBtnGroup>
       <PlDropdown
         v-model="app.model.data.feature"
         :options="featureOptions"
-        label="Feature"
+        label="Matching region"
         :disabled="!app.model.data.targetRef || !app.model.data.referenceRef"
-      />
-      <PlCheckbox v-model="app.model.data.useGeneMatching"> Use V/J gene matching </PlCheckbox>
+      >
+        <template #tooltip>
+          VDJRegion is most precise; CDR3 yields more matches at slightly lower specificity. Only
+          regions present in both datasets appear here.
+        </template>
+      </PlDropdown>
+      <PlCheckbox v-model="app.model.data.useGeneMatching">
+        Require matching V and J genes
+        <PlTooltip class="info" position="top">
+          <template #tooltip>
+            Turn off only when the two datasets use different V/J gene naming conventions — for
+            example, a dataset brought in through the Import VDJ Data block, which preserves the
+            source pipeline's original gene names.
+          </template>
+        </PlTooltip>
+      </PlCheckbox>
       <PlAccordionSection label="Advanced Settings">
         <PlSectionSeparator>Resource Allocation</PlSectionSeparator>
         <PlNumberField
