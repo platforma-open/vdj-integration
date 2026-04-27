@@ -1,5 +1,15 @@
 # @platforma-open/milaboratories.vdj-integration
 
+## 2.0.1
+
+### Patch Changes
+
+- c7aec17: UX improvement
+- Updated dependencies [c7aec17]
+  - @platforma-open/milaboratories.vdj-integration.workflow@2.0.1
+  - @platforma-open/milaboratories.vdj-integration.model@2.0.1
+  - @platforma-open/milaboratories.vdj-integration.ui@2.0.1
+
 ## 2.0.0
 
 ### Major Changes
