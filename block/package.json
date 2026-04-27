@@ -32,7 +32,7 @@
       "logo": "file:../logos/block-logo.png",
       "url": "https://github.com/platforma-open/milaboratories.vdj-integration",
       "support": "mailto:support@milaboratories.com",
-      "description": "Matches VDJ clonotypes between two datasets by exact sequence and V/J gene matching, producing bidirectional linker columns",
+      "description": "Matches clonotypes between two VDJ datasets to bring reference properties (paired chains, liabilities) onto the matched clonotypes.",
       "longDescription": "file:../docs/description.md",
       "changelog": "file:../CHANGELOG.md",
       "tags": [

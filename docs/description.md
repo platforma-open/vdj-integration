@@ -1,7 +1,7 @@
 # Overview
 
-This block matches clonotypes between two VDJ datasets, enabling integration of bulk and single-cell sequencing data. It is designed for antibody discovery workflows where researchers need to identify which clonotypes from a deep bulk sequencing run also appear in a paired single-cell VDJ dataset.
+This block bridges two VDJ datasets by finding clonotypes that appear in both. It is designed for antibody discovery workflows where researchers need to combine a deep target dataset (typically bulk sequencing — broad coverage, no chain pairing) with a reference dataset (typically single-cell sequencing — paired chains, smaller scale).
 
-The block takes two clonotyping run outputs as inputs — a target dataset and a reference dataset. It performs exact matching on nucleotide or amino acid sequences along with V and J gene usage, automatically selecting the widest shared sequence feature (e.g. VDJRegion or CDR3) available in both datasets.
+The block performs exact matching on the widest sequence region shared by both datasets (e.g. VDJRegion or CDR3), in either nucleotide or amino acid alphabet, with optional V and J gene matching at gene level. When a clonotype matches multiple candidates, the block selects the most abundant match and reports a confidence score — 1.0 for unique matches, lower for ambiguous ones.
 
-When a clonotype matches multiple candidates, the block selects the best match and reports a confidence score (1.0 for unique matches, decreasing for ambiguous ones). The output includes bidirectional linker columns that allow downstream blocks such as lead selection, SHM trees, and GraphMaker to join data across the two datasets.
+After running, any column from the reference dataset — paired chains, liabilities, cluster labels, abundance — becomes accessible on the matched target clonotypes in downstream blocks such as Lead Selection, GraphMaker, and SHM Trees. A match summary shows how many clonotypes from each side were matched.
