@@ -346,7 +346,7 @@ buildOutputPFrames := func(matchResults, targetCols, refCols, targetAxisSpec, re
 	resultsPf := pframes.pFrameBuilder()
 	i := 0
 	for k, v in importedResults {
-		resultsPf.add(k + string(i), v.spec, v.data)
+		resultsPf.add(k + "_" + string(i), v.spec, v.data)
 		i = i + 1
 	}
 	resultsPf = resultsPf.build()
@@ -356,7 +356,7 @@ buildOutputPFrames := func(matchResults, targetCols, refCols, targetAxisSpec, re
 	i = 0
 	for pf in [toTargetPf, targetMatchCountPf, refMatchCountPf] {
 		for k, v in pf {
-			epf.add(k + string(i), v.spec, v.data)
+			epf.add(k + "_" + string(i), v.spec, v.data)
 			i = i + 1
 		}
 	}
