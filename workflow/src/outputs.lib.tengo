@@ -2,6 +2,7 @@ ll := import("@platforma-sdk/workflow-tengo:ll")
 json := import("json")
 xsv := import("@platforma-sdk/workflow-tengo:pframes.xsv")
 pframes := import("@platforma-sdk/workflow-tengo:pframes")
+maps := import("@platforma-sdk/workflow-tengo:maps")
 
 /**
  * Import linker and match count TSVs into pFrames.
@@ -345,7 +346,8 @@ buildOutputPFrames := func(matchResults, targetCols, refCols, targetAxisSpec, re
 	// Rebuild as proper pFrame for export
 	resultsPf := pframes.pFrameBuilder()
 	i := 0
-	for k, v in importedResults {
+	for k in maps.getKeys(importedResults) {
+		v := importedResults[k]
 		resultsPf.add(k + "_" + string(i), v.spec, v.data)
 		i = i + 1
 	}
@@ -355,7 +357,8 @@ buildOutputPFrames := func(matchResults, targetCols, refCols, targetAxisSpec, re
 	epf := pframes.pFrameBuilder()
 	i = 0
 	for pf in [toTargetPf, targetMatchCountPf, refMatchCountPf] {
-		for k, v in pf {
+		for k in maps.getKeys(pf) {
+			v := pf[k]
 			epf.add(k + "_" + string(i), v.spec, v.data)
 			i = i + 1
 		}
