@@ -1,3 +1,4 @@
+import { kind } from "@platforma-open/milaboratories.vdj-integration.kind";
 import type { InferOutputsType, PlDataTableStateV2, PlRef } from "@platforma-sdk/model";
 import {
   BlockModelV3,
@@ -54,15 +55,33 @@ export function getDefaultBlockLabel(data: { targetLabel?: string; referenceLabe
   return "Select datasets";
 }
 
-export const blockDataModel = new DataModelBuilder().from<BlockData>("Ver_2026_03_27").init(() => ({
-  defaultBlockLabel: getDefaultBlockLabel({}),
-  customBlockLabel: "",
-  sequenceType: "aminoacid" as const,
-  useGeneMatching: true,
-  tableState: createPlDataTableStateV2(),
-}));
+export const blockDataModel = new DataModelBuilder({ kind })
+  .from<BlockData>("Ver_2026_03_27")
+  .init(({ params }) => ({
+    defaultBlockLabel: getDefaultBlockLabel({}),
+    customBlockLabel: params?.customBlockLabel ?? "",
+    targetRef: params?.targetRef,
+    referenceRef: params?.referenceRef,
+    sequenceType: params?.sequenceType ?? "aminoacid",
+    feature: params?.feature,
+    useGeneMatching: params?.useGeneMatching ?? true,
+    mem: params?.mem,
+    cpu: params?.cpu,
+    tableState: createPlDataTableStateV2(),
+  }));
 
-export const platforma = BlockModelV3.create(blockDataModel)
+export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind })
+
+  .templateParams((data) => ({
+    targetRef: data.targetRef,
+    referenceRef: data.referenceRef,
+    sequenceType: data.sequenceType,
+    feature: data.feature,
+    useGeneMatching: data.useGeneMatching,
+    customBlockLabel: data.customBlockLabel,
+    mem: data.mem,
+    cpu: data.cpu,
+  }))
 
   .args<BlockArgs>((data) => {
     if (data.targetRef === undefined) throw new Error("No target ref");
