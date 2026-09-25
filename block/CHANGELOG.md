@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.vdj-integration
 
+## 2.0.3
+
+### Patch Changes
+
+- 1f2bf1e: Update SDK: PlAgDataTableV2 no longer recreates its grid in an endless loop
+
 ## 2.0.2
 
 ### Patch Changes
