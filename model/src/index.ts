@@ -104,6 +104,12 @@ function datasetOptionsExcept(
   });
 }
 
+/** The target + reference pair, by column id: tags outputs with the datasets they were computed
+ *  for, so the UI can tell them from ones left over from a previous pick. */
+export function datasetPairKey(targetRef: PlRef, referenceRef: PlRef): string {
+  return `${filterIdOf(targetRef)}|${filterIdOf(referenceRef)}`;
+}
+
 export function getDefaultBlockLabel(data: { targetLabel?: string; referenceLabel?: string }) {
   if (data.targetLabel && data.referenceLabel)
     return `${data.targetLabel} ↔ ${data.referenceLabel}`;
@@ -222,6 +228,7 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
     };
 
     return {
+      forDatasets: datasetPairKey(targetRef, referenceRef),
       nucleotide: featuresForAlphabet("nucleotide"),
       aminoacid: featuresForAlphabet("aminoacid"),
     };

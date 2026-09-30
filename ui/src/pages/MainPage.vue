@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import strings from "@milaboratories/strings";
+import { datasetPairKey } from "@platforma-open/milaboratories.vdj-integration.model";
 import type { DatasetSelection, PlRef } from "@platforma-sdk/model";
 import { createDatasetSelection, createPrimaryRef } from "@platforma-sdk/model";
 import {
@@ -53,21 +54,38 @@ watch(
   },
 );
 
+// The selected target + reference pair, in the form the model tags its options with.
+const datasetPair = computed(() => {
+  const { targetRef, referenceRef } = app.model.data;
+  return targetRef && referenceRef ? datasetPairKey(targetRef, referenceRef) : undefined;
+});
+
+// The server-computed map of options for both alphabets, only when it was computed for the
+// selected datasets: right after a dataset change the previous pair's map is still there.
+const currentOptionsByType = computed(() => {
+  const byType = app.model.outputs.featureOptionsByType;
+  return byType !== undefined && byType.forDatasets === datasetPair.value ? byType : undefined;
+});
+
 // Feature options for the currently selected sequence type, derived locally
 // from a single server-computed map of options for both alphabets. This
-// avoids a server round-trip when toggling sequence type.
+// avoids a server round-trip when toggling sequence type. `undefined` while they
+// are computed, which puts the dropdown in its loading state.
 const featureOptions = computed(() => {
-  const byType = app.model.outputs.featureOptionsByType;
-  if (!byType) return [];
-  return byType[app.model.data.sequenceType] ?? [];
+  if (datasetPair.value === undefined) return [];
+  return currentOptionsByType.value?.[app.model.data.sequenceType];
 });
 
 // Auto-select first available feature whenever the options for the current
-// sequence type change, or when the current selection becomes invalid.
+// sequence type change, or when the current selection becomes invalid. Nothing is
+// touched while they are computed, so reopening the block keeps the choice.
+// Watched by content: the SDK patches outputs in place.
 watch(
-  featureOptions,
-  (options) => {
-    if (!options || options.length === 0) {
+  () => JSON.stringify(featureOptions.value ?? null),
+  () => {
+    const options = featureOptions.value;
+    if (options === undefined) return;
+    if (options.length === 0) {
       app.model.data.feature = undefined;
       return;
     }
@@ -78,19 +96,22 @@ watch(
   { immediate: true },
 );
 
-// Auto-detect sequence type: prefer nucleotide when available (fires once)
-const hasAutoDetectedSeqType = ref(false);
-watch(
-  () => app.model.outputs.featureOptionsByType,
-  (byType) => {
-    if (!byType || hasAutoDetectedSeqType.value) return;
-    const nt = byType.nucleotide;
-    if (nt && nt.length > 0) {
-      app.model.data.sequenceType = "nucleotide";
-    }
-    hasAutoDetectedSeqType.value = true;
-  },
-);
+// Auto-detect sequence type: prefer nucleotide when available. Only after the user picks
+// a new target or reference, once the options for that pair arrive, so reopening the block
+// or applying a template keeps the stored choice.
+const detectSequenceTypeFor = ref<string | undefined>();
+watch(datasetPair, (pair) => {
+  detectSequenceTypeFor.value = pair;
+});
+watch([detectSequenceTypeFor, () => JSON.stringify(currentOptionsByType.value ?? null)], () => {
+  const byType = currentOptionsByType.value;
+  if (byType === undefined || byType.forDatasets !== detectSequenceTypeFor.value) return;
+  if (byType.nucleotide === undefined) return;
+  if (byType.nucleotide.length > 0) {
+    app.model.data.sequenceType = "nucleotide";
+  }
+  detectSequenceTypeFor.value = undefined;
+});
 
 const sequenceTypeOptions = [
   { label: "Amino acid", value: "aminoacid" },
