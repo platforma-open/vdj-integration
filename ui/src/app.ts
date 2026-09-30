@@ -26,13 +26,30 @@ type AppModel = ReturnType<typeof useApp>["model"];
 
 function syncDefaultBlockLabel(model: AppModel) {
   watchEffect(() => {
+    // The picked entry's label as the selector shows it: the subset's when one is picked (its
+    // label already carries the dataset as a prefix), else the dataset's.
     const findLabel = (
       ref: typeof model.data.targetRef,
+      filter: typeof model.data.targetFilterRef,
       options: typeof model.outputs.targetOptions,
-    ) => (ref ? options?.find((o) => plRefsEqual(o.ref, ref))?.label : undefined);
+    ) => {
+      if (!ref) return undefined;
+      const option = options?.find((o) => plRefsEqual(o.primary.ref, ref, true));
+      const filterLabel =
+        filter && option?.filters?.find((f) => plRefsEqual(f.ref, filter, true))?.label;
+      return filterLabel ?? option?.primary.label;
+    };
 
-    const targetLabel = findLabel(model.data.targetRef, model.outputs.targetOptions);
-    const referenceLabel = findLabel(model.data.referenceRef, model.outputs.referenceOptions);
+    const targetLabel = findLabel(
+      model.data.targetRef,
+      model.data.targetFilterRef,
+      model.outputs.targetOptions,
+    );
+    const referenceLabel = findLabel(
+      model.data.referenceRef,
+      model.data.referenceFilterRef,
+      model.outputs.referenceOptions,
+    );
 
     model.data.defaultBlockLabel = getDefaultBlockLabel({
       targetLabel,

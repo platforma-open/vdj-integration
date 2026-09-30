@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import strings from "@milaboratories/strings";
+import type { DatasetSelection, PlRef } from "@platforma-sdk/model";
+import { createDatasetSelection, createPrimaryRef } from "@platforma-sdk/model";
 import {
   PlAccordionSection,
   PlAgDataTableV2,
@@ -7,8 +9,8 @@ import {
   PlBtnGhost,
   PlBtnGroup,
   PlCheckbox,
+  PlDatasetSelector,
   PlDropdown,
-  PlDropdownRef,
   PlMaskIcon24,
   PlNumberField,
   PlSectionSeparator,
@@ -20,6 +22,23 @@ import { computed, ref, watch } from "vue";
 import { useApp } from "../app";
 
 const app = useApp();
+
+// Each selector picks a dataset, or a dataset narrowed by one of its subset columns. Clearing it
+// clears both.
+const selectionOf = (side: "target" | "reference") =>
+  computed<DatasetSelection | undefined>({
+    get: () => {
+      const ref: PlRef | undefined = app.model.data[`${side}Ref`];
+      if (ref === undefined) return undefined;
+      return createDatasetSelection(createPrimaryRef(ref, app.model.data[`${side}FilterRef`]));
+    },
+    set: (selection) => {
+      app.model.data[`${side}Ref`] = selection?.primary.column;
+      app.model.data[`${side}FilterRef`] = selection?.primary.filter;
+    },
+  });
+const targetSelection = selectionOf("target");
+const referenceSelection = selectionOf("reference");
 
 const settingsOpen = ref(
   app.model.data.targetRef === undefined || app.model.data.referenceRef === undefined,
@@ -118,8 +137,8 @@ const tableSettings = usePlDataTableSettingsV2({
     />
     <PlSlideModal v-model="settingsOpen" :close-on-outside-click="true" shadow>
       <template #title>Settings</template>
-      <PlDropdownRef
-        v-model="app.model.data.targetRef"
+      <PlDatasetSelector
+        v-model="targetSelection"
         :options="app.model.outputs.targetOptions"
         label="Target repertoire"
         clearable
@@ -129,9 +148,9 @@ const tableSettings = usePlDataTableSettingsV2({
           The repertoire whose clonotypes you want to enrich with extra information — usually a deep
           bulk dataset.
         </template>
-      </PlDropdownRef>
-      <PlDropdownRef
-        v-model="app.model.data.referenceRef"
+      </PlDatasetSelector>
+      <PlDatasetSelector
+        v-model="referenceSelection"
         :options="app.model.outputs.referenceOptions"
         label="Reference repertoire"
         clearable
@@ -141,7 +160,7 @@ const tableSettings = usePlDataTableSettingsV2({
           Provides clonotype properties (paired chains, liabilities, clusters) that get carried onto
           matched target clonotypes — usually a single-cell dataset.
         </template>
-      </PlDropdownRef>
+      </PlDatasetSelector>
       <PlBtnGroup
         v-model="app.model.data.sequenceType"
         label="Sequence type"

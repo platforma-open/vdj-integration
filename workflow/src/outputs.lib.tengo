@@ -12,11 +12,23 @@ pframes := import("@platforma-sdk/workflow-tengo:pframes")
  * @param blockId: string block id for domain tagging
  * @param mem: memory string for conversions (e.g., "8GiB")
  * @param cpu: cpu cores for conversions
+ * @param subsets: map with keys target, reference: the column id of the subset each side ran
+ *   on, undefined for full data
  * @return map with keys toReferencePf, toTargetPf, targetMatchCountPf, refMatchCountPf
  */
-importMatchResults := func(tsvFiles, targetAxisSpec, referenceAxisSpec, blockId, mem, cpu) {
+importMatchResults := func(tsvFiles, targetAxisSpec, referenceAxisSpec, blockId, mem, cpu, subsets) {
 	defaultConvMem := mem
 	defaultConvCpu := cpu
+
+	// Domain of one side's per-clonotype columns. A side run on a subset says so: its values
+	// cover only the subset's clonotypes.
+	sideDomain := func(subset) {
+		d := { "pl7.app/vdj/integration/blockId": blockId }
+		if !is_undefined(subset) {
+			d["pl7.app/inputSubset"] = subset
+		}
+		return d
+	}
 
 	// Import toReference linker: referenceAxis -> targetAxis
 	toReferencePf := xsv.importFile(tsvFiles.toReferenceTsv, "tsv", {
@@ -92,9 +104,7 @@ importMatchResults := func(tsvFiles, targetAxisSpec, referenceAxisSpec, blockId,
 			spec: {
 				name: "pl7.app/vdj/integration/matchCount",
 				valueType: "Int",
-				domain: {
-					"pl7.app/vdj/integration/blockId": blockId
-				},
+				domain: sideDomain(subsets.target),
 				annotations: {
 					"pl7.app/label": "Match Count (target)",
 					"pl7.app/table/visibility": "default",
@@ -106,9 +116,7 @@ importMatchResults := func(tsvFiles, targetAxisSpec, referenceAxisSpec, blockId,
 			spec: {
 				name: "pl7.app/vdj/integration/confidence",
 				valueType: "Float",
-				domain: {
-					"pl7.app/vdj/integration/blockId": blockId
-				},
+				domain: sideDomain(subsets.target),
 				annotations: {
 					"pl7.app/label": "Confidence (target)",
 					"pl7.app/table/visibility": "default",
@@ -132,9 +140,7 @@ importMatchResults := func(tsvFiles, targetAxisSpec, referenceAxisSpec, blockId,
 			spec: {
 				name: "pl7.app/vdj/integration/matchCount",
 				valueType: "Int",
-				domain: {
-					"pl7.app/vdj/integration/blockId": blockId
-				},
+				domain: sideDomain(subsets.reference),
 				annotations: {
 					"pl7.app/label": "Match Count (reference)",
 					"pl7.app/table/visibility": "default",
@@ -146,9 +152,7 @@ importMatchResults := func(tsvFiles, targetAxisSpec, referenceAxisSpec, blockId,
 			spec: {
 				name: "pl7.app/vdj/integration/confidence",
 				valueType: "Float",
-				domain: {
-					"pl7.app/vdj/integration/blockId": blockId
-				},
+				domain: sideDomain(subsets.reference),
 				annotations: {
 					"pl7.app/label": "Confidence (reference)",
 					"pl7.app/table/visibility": "default",

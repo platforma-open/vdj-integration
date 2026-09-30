@@ -3,7 +3,9 @@ exec := import("@platforma-sdk/workflow-tengo:exec")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 pframes := import("@platforma-sdk/workflow-tengo:pframes")
 ll := import("@platforma-sdk/workflow-tengo:ll")
+json := import("json")
 outputs := import(":outputs")
+subsetTable := import(":subset-table")
 
 wf.prepare(func(args) {
 	bundleBuilder := wf.createPBundleBuilder()
@@ -87,6 +89,14 @@ wf.prepare(func(args) {
 		}
 	}, "refJGenes")
 
+	// Optional subset columns picked alongside each dataset (PlDatasetSelector)
+	if !is_undefined(args.targetFilter) {
+		bundleBuilder.addRef(json.decode(args.targetFilter))
+	}
+	if !is_undefined(args.referenceFilter) {
+		bundleBuilder.addRef(json.decode(args.referenceFilter))
+	}
+
 	return {
 		columns: bundleBuilder.build()
 	}
@@ -112,8 +122,19 @@ wf.body(func(args) {
 	targetAxisSpec := targetSpec.axesSpec[1]
 	referenceAxisSpec := referenceSpec.axesSpec[1]
 
+	// Optional subset filters: only their clonotypes enter the tables, so only they are matched.
+	filterColumnOf := func(filterId) {
+		if is_undefined(filterId) {
+			return undefined
+		}
+		f := columns.getColumn(json.decode(filterId))
+		return { spec: f.spec, data: f.data }
+	}
+	targetFilterColumn := filterColumnOf(args.targetFilter)
+	referenceFilterColumn := filterColumnOf(args.referenceFilter)
+
 	// Build target TSV
-	targetTsvBuilder := pframes.tsvFileBuilder()
+	targetTsvBuilder := subsetTable.newTableBuilder(targetFilterColumn)
 	targetTsvBuilder.mem(mem)
 	targetTsvBuilder.cpu(cpu)
 	targetTsvBuilder.setAxisHeader(targetAxisSpec.name, "clonotypeKey")
@@ -133,7 +154,7 @@ wf.body(func(args) {
 	targetTsv := targetTsvBuilder.build()
 
 	// Build reference TSV
-	refTsvBuilder := pframes.tsvFileBuilder()
+	refTsvBuilder := subsetTable.newTableBuilder(referenceFilterColumn)
 	refTsvBuilder.mem(mem)
 	refTsvBuilder.cpu(cpu)
 	refTsvBuilder.setAxisHeader(referenceAxisSpec.name, "clonotypeKey")
@@ -154,7 +175,7 @@ wf.body(func(args) {
 
 	// Build abundance TSVs (sampleId + clonotypeKey + abundance)
 	targetAbundanceCol := columns.getColumn("targetAbundance")
-	targetAbundanceTsvBuilder := pframes.tsvFileBuilder()
+	targetAbundanceTsvBuilder := subsetTable.newTableBuilder(targetFilterColumn)
 	targetAbundanceTsvBuilder.mem(mem)
 	targetAbundanceTsvBuilder.cpu(cpu)
 	targetAbundanceTsvBuilder.setAxisHeader(targetSpec.axesSpec[0].name, "sampleId")
@@ -163,7 +184,7 @@ wf.body(func(args) {
 	targetAbundanceTsv := targetAbundanceTsvBuilder.build()
 
 	refAbundanceCol := columns.getColumn("referenceAbundance")
-	refAbundanceTsvBuilder := pframes.tsvFileBuilder()
+	refAbundanceTsvBuilder := subsetTable.newTableBuilder(referenceFilterColumn)
 	refAbundanceTsvBuilder.mem(mem)
 	refAbundanceTsvBuilder.cpu(cpu)
 	refAbundanceTsvBuilder.setAxisHeader(referenceSpec.axesSpec[0].name, "sampleId")
@@ -207,7 +228,8 @@ wf.body(func(args) {
 		toTargetTsv: python.getFile("toTarget.tsv"),
 		targetMatchCountTsv: python.getFile("targetMatchCount.tsv"),
 		refMatchCountTsv: python.getFile("refMatchCount.tsv")
-	}, targetAxisSpec, referenceAxisSpec, blockId, mem, cpu)
+	}, targetAxisSpec, referenceAxisSpec, blockId, mem, cpu,
+		{ target: args.targetFilter, reference: args.referenceFilter })
 
 	// Build output and export pFrames
 	outputPFrames := outputs.buildOutputPFrames(
