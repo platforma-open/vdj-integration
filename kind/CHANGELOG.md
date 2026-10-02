@@ -1,6 +1,6 @@
-# @platforma-open/milaboratories.vdj-integration.model
+# @platforma-open/milaboratories.vdj-integration.kind
 
-## 2.1.0
+## 1.1.0
 
 ### Minor Changes
 
@@ -11,26 +11,3 @@
   - Each side's Match Count and Confidence computed on a subset carry the subset's column id in `pl7.app/inputSubset`.
   - The default block label shows the picked subsets.
   - Sequence type and Matching region no longer reset when switching back to the block: the Nucleotide preference applies only after picking new datasets, and the Matching region keeps its value while its options load.
-
-### Patch Changes
-
-- Updated dependencies [2fe54a6]
-  - @platforma-open/milaboratories.vdj-integration.kind@1.1.0
-
-## 2.0.2
-
-### Patch Changes
-
-- 2161ea6: Migrate onto the structurer and upgrade the SDK: model/ui-vue 1.61 → 1.83.17, workflow-tengo 5.11 → 6.10.3, tengo-builder 2.5.2 → 4.0.27, block-tools 2.7.2 → 2.15.2. Adds the mandatory block kind with an init-params contract, so the block can be created from a project template.
-
-## 2.0.1
-
-### Patch Changes
-
-- c7aec17: UX improvement
-
-## 2.0.0
-
-### Major Changes
-
-- 70d8503: VDJ Block initial implementation
