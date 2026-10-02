@@ -8,7 +8,7 @@ export type SequenceType = "nucleotide" | "aminoacid";
 
 /**
  * This block's init-params contract — everything a user sets by hand: the two
- * datasets to match, the alphabet and feature the match runs on, whether V/J
+ * datasets to match (each optionally narrowed to one of its subset columns), the alphabet and feature the match runs on, whether V/J
  * genes have to agree, the subtitle they type, and the resource knobs the
  * Advanced Settings section exposes.
  *
@@ -24,7 +24,11 @@ export type SequenceType = "nucleotide" | "aminoacid";
  */
 export type BlockParams = {
   targetRef?: PlRef;
+  /** Optional subset column of the target. */
+  targetFilterRef?: PlRef;
   referenceRef?: PlRef;
+  /** As {@link BlockParams.targetFilterRef}, for the reference. */
+  referenceFilterRef?: PlRef;
   sequenceType?: SequenceType;
   feature?: string;
   useGeneMatching?: boolean;
@@ -39,7 +43,9 @@ function parseInitializationParams(value: unknown): BlockParams {
 
   const {
     targetRef,
+    targetFilterRef,
     referenceRef,
+    referenceFilterRef,
     sequenceType,
     feature,
     useGeneMatching,
@@ -50,7 +56,13 @@ function parseInitializationParams(value: unknown): BlockParams {
 
   return {
     targetRef: optionalPlRef(targetRef, "targetRef"),
+    targetFilterRef: optionalPlRef(targetFilterRef, "targetFilterRef", "a subset column reference"),
     referenceRef: optionalPlRef(referenceRef, "referenceRef"),
+    referenceFilterRef: optionalPlRef(
+      referenceFilterRef,
+      "referenceFilterRef",
+      "a subset column reference",
+    ),
     sequenceType: optionalSequenceType(sequenceType),
     feature: optionalString(feature, "feature"),
     useGeneMatching: optionalBoolean(useGeneMatching, "useGeneMatching"),
@@ -71,10 +83,13 @@ const SEQUENCE_TYPES: readonly string[] = ["nucleotide", "aminoacid"];
 
 /** A reference to a column another block published. Checked with the SDK's own
  *  guard, so the brand and the optional enrichment flag stay in step with it. */
-function optionalPlRef(value: unknown, at: string): PlRef | undefined {
+function optionalPlRef(
+  value: unknown,
+  at: string,
+  what = "a dataset reference",
+): PlRef | undefined {
   if (value === undefined) return undefined;
-  if (!isPlRef(value))
-    throw new Error(`'${at}' must be a dataset reference, written as { block, name }.`);
+  if (!isPlRef(value)) throw new Error(`'${at}' must be ${what}, written as { block, name }.`);
   return value;
 }
 

@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import strings from "@milaboratories/strings";
+import { datasetPairKey } from "@platforma-open/milaboratories.vdj-integration.model";
+import type { DatasetSelection, PlRef } from "@platforma-sdk/model";
+import { createDatasetSelection, createPrimaryRef } from "@platforma-sdk/model";
 import {
   PlAccordionSection,
   PlAgDataTableV2,
@@ -7,8 +10,8 @@ import {
   PlBtnGhost,
   PlBtnGroup,
   PlCheckbox,
+  PlDatasetSelector,
   PlDropdown,
-  PlDropdownRef,
   PlMaskIcon24,
   PlNumberField,
   PlSectionSeparator,
@@ -20,6 +23,23 @@ import { computed, ref, watch } from "vue";
 import { useApp } from "../app";
 
 const app = useApp();
+
+// Each selector picks a dataset, or a dataset narrowed by one of its subset columns. Clearing it
+// clears both.
+const selectionOf = (side: "target" | "reference") =>
+  computed<DatasetSelection | undefined>({
+    get: () => {
+      const ref: PlRef | undefined = app.model.data[`${side}Ref`];
+      if (ref === undefined) return undefined;
+      return createDatasetSelection(createPrimaryRef(ref, app.model.data[`${side}FilterRef`]));
+    },
+    set: (selection) => {
+      app.model.data[`${side}Ref`] = selection?.primary.column;
+      app.model.data[`${side}FilterRef`] = selection?.primary.filter;
+    },
+  });
+const targetSelection = selectionOf("target");
+const referenceSelection = selectionOf("reference");
 
 const settingsOpen = ref(
   app.model.data.targetRef === undefined || app.model.data.referenceRef === undefined,
@@ -34,21 +54,38 @@ watch(
   },
 );
 
+// The selected target + reference pair, in the form the model tags its options with.
+const datasetPair = computed(() => {
+  const { targetRef, referenceRef } = app.model.data;
+  return targetRef && referenceRef ? datasetPairKey(targetRef, referenceRef) : undefined;
+});
+
+// The server-computed map of options for both alphabets, only when it was computed for the
+// selected datasets: right after a dataset change the previous pair's map is still there.
+const currentOptionsByType = computed(() => {
+  const byType = app.model.outputs.featureOptionsByType;
+  return byType !== undefined && byType.forDatasets === datasetPair.value ? byType : undefined;
+});
+
 // Feature options for the currently selected sequence type, derived locally
 // from a single server-computed map of options for both alphabets. This
-// avoids a server round-trip when toggling sequence type.
+// avoids a server round-trip when toggling sequence type. `undefined` while they
+// are computed, which puts the dropdown in its loading state.
 const featureOptions = computed(() => {
-  const byType = app.model.outputs.featureOptionsByType;
-  if (!byType) return [];
-  return byType[app.model.data.sequenceType] ?? [];
+  if (datasetPair.value === undefined) return [];
+  return currentOptionsByType.value?.[app.model.data.sequenceType];
 });
 
 // Auto-select first available feature whenever the options for the current
-// sequence type change, or when the current selection becomes invalid.
+// sequence type change, or when the current selection becomes invalid. Nothing is
+// touched while they are computed, so reopening the block keeps the choice.
+// Watched by content: the SDK patches outputs in place.
 watch(
-  featureOptions,
-  (options) => {
-    if (!options || options.length === 0) {
+  () => JSON.stringify(featureOptions.value ?? null),
+  () => {
+    const options = featureOptions.value;
+    if (options === undefined) return;
+    if (options.length === 0) {
       app.model.data.feature = undefined;
       return;
     }
@@ -59,19 +96,22 @@ watch(
   { immediate: true },
 );
 
-// Auto-detect sequence type: prefer nucleotide when available (fires once)
-const hasAutoDetectedSeqType = ref(false);
-watch(
-  () => app.model.outputs.featureOptionsByType,
-  (byType) => {
-    if (!byType || hasAutoDetectedSeqType.value) return;
-    const nt = byType.nucleotide;
-    if (nt && nt.length > 0) {
-      app.model.data.sequenceType = "nucleotide";
-    }
-    hasAutoDetectedSeqType.value = true;
-  },
-);
+// Auto-detect sequence type: prefer nucleotide when available. Only after the user picks
+// a new target or reference, once the options for that pair arrive, so reopening the block
+// or applying a template keeps the stored choice.
+const detectSequenceTypeFor = ref<string | undefined>();
+watch(datasetPair, (pair) => {
+  detectSequenceTypeFor.value = pair;
+});
+watch([detectSequenceTypeFor, () => JSON.stringify(currentOptionsByType.value ?? null)], () => {
+  const byType = currentOptionsByType.value;
+  if (byType === undefined || byType.forDatasets !== detectSequenceTypeFor.value) return;
+  if (byType.nucleotide === undefined) return;
+  if (byType.nucleotide.length > 0) {
+    app.model.data.sequenceType = "nucleotide";
+  }
+  detectSequenceTypeFor.value = undefined;
+});
 
 const sequenceTypeOptions = [
   { label: "Amino acid", value: "aminoacid" },
@@ -118,8 +158,8 @@ const tableSettings = usePlDataTableSettingsV2({
     />
     <PlSlideModal v-model="settingsOpen" :close-on-outside-click="true" shadow>
       <template #title>Settings</template>
-      <PlDropdownRef
-        v-model="app.model.data.targetRef"
+      <PlDatasetSelector
+        v-model="targetSelection"
         :options="app.model.outputs.targetOptions"
         label="Target repertoire"
         clearable
@@ -129,9 +169,9 @@ const tableSettings = usePlDataTableSettingsV2({
           The repertoire whose clonotypes you want to enrich with extra information — usually a deep
           bulk dataset.
         </template>
-      </PlDropdownRef>
-      <PlDropdownRef
-        v-model="app.model.data.referenceRef"
+      </PlDatasetSelector>
+      <PlDatasetSelector
+        v-model="referenceSelection"
         :options="app.model.outputs.referenceOptions"
         label="Reference repertoire"
         clearable
@@ -141,7 +181,7 @@ const tableSettings = usePlDataTableSettingsV2({
           Provides clonotype properties (paired chains, liabilities, clusters) that get carried onto
           matched target clonotypes — usually a single-cell dataset.
         </template>
-      </PlDropdownRef>
+      </PlDatasetSelector>
       <PlBtnGroup
         v-model="app.model.data.sequenceType"
         label="Sequence type"

@@ -1,10 +1,19 @@
 import { kind } from "@platforma-open/milaboratories.vdj-integration.kind";
-import type { InferOutputsType, PlDataTableStateV2, PlRef } from "@platforma-sdk/model";
+import type {
+  DatasetOption,
+  InferOutputsType,
+  PlDataTableStateV2,
+  PlRef,
+  RenderCtxBase,
+} from "@platforma-sdk/model";
 import {
   BlockModelV3,
+  buildDatasetOptions,
+  createGlobalPObjectId,
   createPlDataTableStateV2,
   createPlDataTableV2,
   DataModelBuilder,
+  isPColumnSpec,
   plRefsEqual,
 } from "@platforma-sdk/model";
 
@@ -12,7 +21,11 @@ export type BlockData = {
   defaultBlockLabel: string;
   customBlockLabel: string;
   targetRef?: PlRef;
+  // Optional `pl7.app/isSubset` column picked alongside the target.
+  targetFilterRef?: PlRef;
   referenceRef?: PlRef;
+  // As targetFilterRef, for the reference.
+  referenceFilterRef?: PlRef;
   sequenceType: "nucleotide" | "aminoacid";
   feature?: string;
   useGeneMatching: boolean;
@@ -23,7 +36,12 @@ export type BlockData = {
 
 export type BlockArgs = {
   targetRef: PlRef;
+  /** `targetFilterRef` as its column id: the workflow stamps this string as the target-side
+   *  outputs' `pl7.app/inputSubset`. Absent without a filter. */
+  targetFilter?: string;
   referenceRef: PlRef;
+  /** As targetFilter, for the reference. */
+  referenceFilter?: string;
   sequenceType: "nucleotide" | "aminoacid";
   feature: string;
   useGeneMatching: boolean;
@@ -49,6 +67,49 @@ const datasetOptionConfig = {
   },
 };
 
+/** Column id of a subset filter: the form the workflow stamps as `pl7.app/inputSubset`. */
+const filterIdOf = (ref: PlRef | undefined): string | undefined =>
+  ref && createGlobalPObjectId(ref.blockId, ref.name);
+
+/**
+ * The datasets one side can pick, each with its subset columns (`pl7.app/isSubset`, e.g.
+ * repertoire-labeling labels or Lead Selection picks) as filters. The dataset picked on the other
+ * side is left out. Only the filters come from `buildDatasetOptions`: its primary refs carry
+ * `requireEnrichments`, which would make this block depend on every block between it and the
+ * datasets. The primary predicate only has to cover the datasets above: results are matched to
+ * them by ref.
+ */
+function datasetOptionsExcept(
+  ctx: RenderCtxBase<unknown, BlockData>,
+  otherRef: PlRef | undefined,
+): DatasetOption[] | undefined {
+  const options = ctx.resultPool
+    .getOptions(datasetOptionPatterns, datasetOptionConfig)
+    .filter((o) => !otherRef || !plRefsEqual(o.ref, otherRef));
+  const withFilters =
+    buildDatasetOptions(ctx, {
+      primary: (spec) =>
+        isPColumnSpec(spec) &&
+        spec.annotations?.["pl7.app/isAnchor"] === "true" &&
+        spec.axesSpec[0]?.name === "pl7.app/sampleId",
+      // Only subsets keyed by the clonotype axis alone: matching is per clonotype.
+      filter: (spec) =>
+        isPColumnSpec(spec) &&
+        spec.axesSpec.length === 1 &&
+        spec.axesSpec[0]?.name !== "pl7.app/sampleId",
+    }) ?? [];
+  return options.map((primary) => {
+    const filters = withFilters.find((o) => plRefsEqual(o.primary.ref, primary.ref, true))?.filters;
+    return filters === undefined ? { primary } : { primary, filters };
+  });
+}
+
+/** The target + reference pair, by column id: tags outputs with the datasets they were computed
+ *  for, so the UI can tell them from ones left over from a previous pick. */
+export function datasetPairKey(targetRef: PlRef, referenceRef: PlRef): string {
+  return `${filterIdOf(targetRef)}|${filterIdOf(referenceRef)}`;
+}
+
 export function getDefaultBlockLabel(data: { targetLabel?: string; referenceLabel?: string }) {
   if (data.targetLabel && data.referenceLabel)
     return `${data.targetLabel} ↔ ${data.referenceLabel}`;
@@ -61,7 +122,9 @@ export const blockDataModel = new DataModelBuilder({ kind })
     defaultBlockLabel: getDefaultBlockLabel({}),
     customBlockLabel: params?.customBlockLabel ?? "",
     targetRef: params?.targetRef,
+    targetFilterRef: params?.targetFilterRef,
     referenceRef: params?.referenceRef,
+    referenceFilterRef: params?.referenceFilterRef,
     sequenceType: params?.sequenceType ?? "aminoacid",
     feature: params?.feature,
     useGeneMatching: params?.useGeneMatching ?? true,
@@ -74,7 +137,9 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
 
   .templateParams((data) => ({
     targetRef: data.targetRef,
+    targetFilterRef: data.targetFilterRef,
     referenceRef: data.referenceRef,
+    referenceFilterRef: data.referenceFilterRef,
     sequenceType: data.sequenceType,
     feature: data.feature,
     useGeneMatching: data.useGeneMatching,
@@ -88,9 +153,14 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
     if (data.referenceRef === undefined) throw new Error("No reference ref");
     if (data.feature === undefined) throw new Error("No feature");
 
+    const targetFilter = filterIdOf(data.targetFilterRef);
+    const referenceFilter = filterIdOf(data.referenceFilterRef);
     return {
       targetRef: data.targetRef,
+      // Absent without a filter, so unfiltered args are unchanged.
+      ...(targetFilter !== undefined && { targetFilter }),
       referenceRef: data.referenceRef,
+      ...(referenceFilter !== undefined && { referenceFilter }),
       sequenceType: data.sequenceType,
       feature: data.feature,
       useGeneMatching: data.useGeneMatching,
@@ -99,19 +169,9 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
     };
   })
 
-  .output("targetOptions", (ctx) => {
-    const options = ctx.resultPool.getOptions(datasetOptionPatterns, datasetOptionConfig);
-    const refRef = ctx.data.referenceRef;
-    if (!options || !refRef) return options;
-    return options.filter((o) => !plRefsEqual(o.ref, refRef));
-  })
+  .output("targetOptions", (ctx) => datasetOptionsExcept(ctx, ctx.data.referenceRef))
 
-  .output("referenceOptions", (ctx) => {
-    const options = ctx.resultPool.getOptions(datasetOptionPatterns, datasetOptionConfig);
-    const targetRef = ctx.data.targetRef;
-    if (!options || !targetRef) return options;
-    return options.filter((o) => !plRefsEqual(o.ref, targetRef));
-  })
+  .output("referenceOptions", (ctx) => datasetOptionsExcept(ctx, ctx.data.targetRef))
 
   .output("featureOptionsByType", (ctx) => {
     const targetRef = ctx.data.targetRef;
@@ -168,6 +228,7 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
     };
 
     return {
+      forDatasets: datasetPairKey(targetRef, referenceRef),
       nucleotide: featuresForAlphabet("nucleotide"),
       aminoacid: featuresForAlphabet("aminoacid"),
     };
