@@ -195,15 +195,15 @@ buildOutputPFrames := func(matchResults, targetCols, refCols, targetAxisSpec, re
 	refMatchCountPf := matchResults.refMatchCountPf
 
 	// -- Build flat joined parquet for the UI results table --
-	resultsTableBuilder := pframes.parquetFileBuilder()
+	resultsTableBuilder := pframes.tableBuilder("parquet").setColumnJoin("left")
 	resultsTableBuilder.mem(mem)
 	resultsTableBuilder.cpu(cpu)
 	resultsTableBuilder.setAxisHeader(targetAxisSpec.name, "targetKey")
 	resultsTableBuilder.setAxisHeader(referenceAxisSpec.name, "refKey")
 
-	// Linker drives the join between axes
+	// One row per match; a clonotype missing a chain leaves its cells empty instead of dropping the row
 	for _, v in toTargetPf {
-		resultsTableBuilder.add(v, {header: "link"})
+		resultsTableBuilder.addPrimary("link", v, {header: "link"})
 	}
 
 	// Track columns for reimport
@@ -224,9 +224,10 @@ buildOutputPFrames := func(matchResults, targetCols, refCols, targetAxisSpec, re
 	addCols := func(cols, prefix, colName, side, priority) {
 		for i, col in cols {
 			h := prefix + string(i)
-			resultsTableBuilder.add(col, {header: h})
+			resultsTableBuilder.addColumn(col, {header: h})
 			importCols = append(importCols, {
 				column: h,
+				allowNA: true,
 				spec: {
 					name: "pl7.app/vdj/integration/" + colName,
 					valueType: col.spec.valueType,
@@ -253,7 +254,7 @@ buildOutputPFrames := func(matchResults, targetCols, refCols, targetAxisSpec, re
 	// Target match count & confidence
 	for _, v in targetMatchCountPf {
 		if v.spec.name == "pl7.app/vdj/integration/matchCount" {
-			resultsTableBuilder.add(v, {header: "targetMatchCount"})
+			resultsTableBuilder.addColumn(v, {header: "targetMatchCount"})
 			importCols = append(importCols, {
 				column: "targetMatchCount",
 				spec: {
@@ -270,7 +271,7 @@ buildOutputPFrames := func(matchResults, targetCols, refCols, targetAxisSpec, re
 				}
 			})
 		} else if v.spec.name == "pl7.app/vdj/integration/confidence" {
-			resultsTableBuilder.add(v, {header: "targetConfidence"})
+			resultsTableBuilder.addColumn(v, {header: "targetConfidence"})
 			importCols = append(importCols, {
 				column: "targetConfidence",
 				spec: {
@@ -293,7 +294,7 @@ buildOutputPFrames := func(matchResults, targetCols, refCols, targetAxisSpec, re
 	// Reference match count & confidence
 	for _, v in refMatchCountPf {
 		if v.spec.name == "pl7.app/vdj/integration/matchCount" {
-			resultsTableBuilder.add(v, {header: "refMatchCount"})
+			resultsTableBuilder.addColumn(v, {header: "refMatchCount"})
 			importCols = append(importCols, {
 				column: "refMatchCount",
 				spec: {
@@ -310,7 +311,7 @@ buildOutputPFrames := func(matchResults, targetCols, refCols, targetAxisSpec, re
 				}
 			})
 		} else if v.spec.name == "pl7.app/vdj/integration/confidence" {
-			resultsTableBuilder.add(v, {header: "refConfidence"})
+			resultsTableBuilder.addColumn(v, {header: "refConfidence"})
 			importCols = append(importCols, {
 				column: "refConfidence",
 				spec: {
@@ -330,7 +331,7 @@ buildOutputPFrames := func(matchResults, targetCols, refCols, targetAxisSpec, re
 		}
 	}
 
-	resultsParquet := resultsTableBuilder.build({joinType: "Inner"})
+	resultsParquet := resultsTableBuilder.build()
 
 	// Import back with both axes so all columns share the same axis structure
 	importedResults := xsv.importFile(resultsParquet, "parquet", {
