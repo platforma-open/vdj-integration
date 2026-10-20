@@ -1,5 +1,13 @@
 # @platforma-open/milaboratories.vdj-integration.workflow
 
+## 2.1.1
+
+### Patch Changes
+
+- 1200322: Release every package through npm trusted publishing (OIDC) so each package's trusted publisher is used before it expires.
+- Updated dependencies [1200322]
+  - @platforma-open/milaboratories.vdj-integration.software@2.0.3
+
 ## 2.1.0
 
 ### Minor Changes
