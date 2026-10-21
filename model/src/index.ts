@@ -4,6 +4,7 @@ import type {
   InferOutputsType,
   PlDataTableStateV2,
   PlRef,
+  PObjectSpec,
   RenderCtxBase,
 } from "@platforma-sdk/model";
 import {
@@ -49,16 +50,18 @@ export type BlockArgs = {
   cpu?: number;
 };
 
-const datasetOptionPatterns = [
-  {
-    axes: [{ name: "pl7.app/sampleId" }, { name: "pl7.app/vdj/clonotypeKey" }],
-    annotations: { "pl7.app/isAnchor": "true" },
-  },
-  {
-    axes: [{ name: "pl7.app/sampleId" }, { name: "pl7.app/vdj/scClonotypeKey" }],
-    annotations: { "pl7.app/isAnchor": "true" },
-  },
-];
+// Key axes of the datasets this block matches: bulk and single-cell clonotypes.
+const DATASET_KEY_AXES: ReadonlySet<string> = new Set([
+  "pl7.app/vdj/clonotypeKey",
+  "pl7.app/vdj/scClonotypeKey",
+]);
+
+const isDataset = (spec: PObjectSpec): boolean =>
+  isPColumnSpec(spec) &&
+  spec.annotations?.["pl7.app/isAnchor"] === "true" &&
+  spec.axesSpec.length === 2 &&
+  spec.axesSpec[0].name === "pl7.app/sampleId" &&
+  DATASET_KEY_AXES.has(spec.axesSpec[1].name);
 
 const datasetOptionConfig = {
   label: {
@@ -74,34 +77,30 @@ const filterIdOf = (ref: PlRef | undefined): string | undefined =>
 /**
  * The datasets one side can pick, each with its subset columns (`pl7.app/isSubset`, e.g.
  * repertoire-labeling labels or Lead Selection picks) as filters. The dataset picked on the other
- * side is left out. Only the filters come from `buildDatasetOptions`: its primary refs carry
- * `requireEnrichments`, which would make this block depend on every block between it and the
- * datasets. The primary predicate only has to cover the datasets above: results are matched to
- * them by ref.
+ * side is left out.
  */
 function datasetOptionsExcept(
   ctx: RenderCtxBase<unknown, BlockData>,
   otherRef: PlRef | undefined,
 ): DatasetOption[] | undefined {
-  const options = ctx.resultPool
-    .getOptions(datasetOptionPatterns, datasetOptionConfig)
-    .filter((o) => !otherRef || !plRefsEqual(o.ref, otherRef));
-  const withFilters =
+  // Labels as before: buildDatasetOptions takes no label options for the datasets.
+  const labeled = ctx.resultPool.getOptions(isDataset, datasetOptionConfig);
+  const options =
     buildDatasetOptions(ctx, {
-      primary: (spec) =>
-        isPColumnSpec(spec) &&
-        spec.annotations?.["pl7.app/isAnchor"] === "true" &&
-        spec.axesSpec[0]?.name === "pl7.app/sampleId",
+      primary: isDataset,
       // Only subsets keyed by the clonotype axis alone: matching is per clonotype.
       filter: (spec) =>
         isPColumnSpec(spec) &&
         spec.axesSpec.length === 1 &&
-        spec.axesSpec[0]?.name !== "pl7.app/sampleId",
+        DATASET_KEY_AXES.has(spec.axesSpec[0].name),
+      requireEnrichments: false,
     }) ?? [];
-  return options.map((primary) => {
-    const filters = withFilters.find((o) => plRefsEqual(o.primary.ref, primary.ref, true))?.filters;
-    return filters === undefined ? { primary } : { primary, filters };
-  });
+  return options
+    .filter((o) => !otherRef || !plRefsEqual(o.primary.ref, otherRef, true))
+    .map((option) => {
+      const label = labeled.find((l) => plRefsEqual(l.ref, option.primary.ref, true))?.label;
+      return label === undefined ? option : { ...option, primary: { ...option.primary, label } };
+    });
 }
 
 /** The target + reference pair, by column id: tags outputs with the datasets they were computed
