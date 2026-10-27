@@ -1,6 +1,7 @@
 ---
 "@platforma-open/milaboratories.vdj-integration": patch
 "@platforma-open/milaboratories.vdj-integration.model": patch
+"@platforma-open/milaboratories.vdj-integration.ui": patch
 "@platforma-open/milaboratories.vdj-integration.workflow": patch
 ---
 
