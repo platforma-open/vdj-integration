@@ -1,5 +1,13 @@
 # @platforma-open/milaboratories.vdj-integration.ui
 
+## 2.1.2
+
+### Patch Changes
+
+- d904c98: Update the SDK and build the dataset lists with buildDatasetOptions (requireEnrichments: false), replacing the custom merge of datasets and their subset filters. Dataset labels are unchanged. The results table no longer comes out empty when a clonotype lacks one of the chains: matches are kept and missing chains are left blank.
+- Updated dependencies [d904c98]
+  - @platforma-open/milaboratories.vdj-integration.model@2.1.2
+
 ## 2.1.1
 
 ### Patch Changes
