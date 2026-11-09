@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import strings from "@milaboratories/strings";
-import { datasetPairKey } from "@platforma-open/milaboratories.vdj-integration.model";
+import {
+  datasetPairKey,
+  defaultSubtitle,
+} from "@platforma-open/milaboratories.vdj-integration.model";
 import type { DatasetSelection, PlRef } from "@platforma-sdk/model";
 import { createDatasetSelection, createPrimaryRef } from "@platforma-sdk/model";
 import {
@@ -126,7 +129,7 @@ const tableSettings = usePlDataTableSettingsV2({
 <template>
   <PlBlockPage
     v-model:subtitle="app.model.data.customBlockLabel"
-    :subtitle-placeholder="app.model.data.defaultBlockLabel"
+    :subtitle-placeholder="defaultSubtitle(app.model.data)"
     title="VDJ Integration"
   >
     <template #append>
