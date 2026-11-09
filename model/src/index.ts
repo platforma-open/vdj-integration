@@ -19,8 +19,12 @@ import {
 } from "@platforma-sdk/model";
 
 export type BlockData = {
-  defaultBlockLabel: string;
   customBlockLabel: string;
+  /**
+   * The picked target and reference as the result pool shows them, joined by " ↔ ". Written by
+   * the dataset pickers on a user pick; feeds the subtitle only, never the workflow.
+   */
+  subtitleLabel?: string;
   targetRef?: PlRef;
   // Optional `pl7.app/isSubset` column picked alongside the target.
   targetFilterRef?: PlRef;
@@ -33,6 +37,11 @@ export type BlockData = {
   mem?: number;
   cpu?: number;
   tableState: PlDataTableStateV2;
+};
+
+/** Data as stored before `subtitleLabel` replaced the UI-computed `defaultBlockLabel`. */
+export type BlockDataV1 = Omit<BlockData, "subtitleLabel"> & {
+  defaultBlockLabel: string;
 };
 
 export type BlockArgs = {
@@ -109,17 +118,29 @@ export function datasetPairKey(targetRef: PlRef, referenceRef: PlRef): string {
   return `${filterIdOf(targetRef)}|${filterIdOf(referenceRef)}`;
 }
 
-export function getDefaultBlockLabel(data: { targetLabel?: string; referenceLabel?: string }) {
-  if (data.targetLabel && data.referenceLabel)
-    return `${data.targetLabel} ↔ ${data.referenceLabel}`;
-  return "Select datasets";
+const SELECT_DATASETS_HINT = "Select datasets";
+
+/** Subtitle shown when the user has not set a custom block label. */
+export function defaultSubtitle(
+  data: Pick<BlockData, "targetRef" | "referenceRef" | "subtitleLabel">,
+): string {
+  if (data.targetRef === undefined || data.referenceRef === undefined) return SELECT_DATASETS_HINT;
+  return data.subtitleLabel ?? "";
 }
 
 export const blockDataModel = new DataModelBuilder({ kind })
-  .from<BlockData>("Ver_2026_03_27")
+  .from<BlockDataV1>("Ver_2026_03_27")
+  // The old label was the two picked datasets' result-pool labels alone, or a fixed hint until
+  // both were resolved; the labels carry over, the hint is recomputed from data.
+  .migrate<BlockData>("Ver_2026_11_06", ({ defaultBlockLabel, ...rest }) => ({
+    ...rest,
+    subtitleLabel: defaultBlockLabel === SELECT_DATASETS_HINT ? "" : defaultBlockLabel,
+  }))
   .init(({ params }) => ({
-    defaultBlockLabel: getDefaultBlockLabel({}),
     customBlockLabel: params?.customBlockLabel ?? "",
+    // The datasets' labels come from the result pool, which `init` cannot reach; they are
+    // written when the user picks the datasets.
+    subtitleLabel: "",
     targetRef: params?.targetRef,
     targetFilterRef: params?.targetFilterRef,
     referenceRef: params?.referenceRef,
@@ -267,7 +288,7 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
 
   .title(() => "VDJ Integration")
 
-  .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel)
+  .subtitle((ctx) => ctx.data.customBlockLabel || defaultSubtitle(ctx.data))
 
   .sections((_ctx) => [{ type: "link", href: "/", label: "Main" }])
 
