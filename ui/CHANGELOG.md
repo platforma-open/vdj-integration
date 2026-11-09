@@ -1,5 +1,17 @@
 # @platforma-open/milaboratories.vdj-integration.ui
 
+## 2.1.3
+
+### Patch Changes
+
+- 1959aa2: Compute the block subtitle's hint in the model
+
+  The subtitle shows the picked target and reference datasets, kept in sync with the
+  result pool and written only when they change. Existing blocks keep their subtitle.
+
+- Updated dependencies [1959aa2]
+  - @platforma-open/milaboratories.vdj-integration.model@2.1.3
+
 ## 2.1.2
 
 ### Patch Changes
