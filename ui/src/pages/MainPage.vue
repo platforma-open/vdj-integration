@@ -5,7 +5,7 @@ import {
   defaultSubtitle,
 } from "@platforma-open/milaboratories.vdj-integration.model";
 import type { DatasetSelection, PlRef } from "@platforma-sdk/model";
-import { createDatasetSelection, createPrimaryRef, plRefsEqual } from "@platforma-sdk/model";
+import { createDatasetSelection, createPrimaryRef } from "@platforma-sdk/model";
 import {
   PlAccordionSection,
   PlAgDataTableV2,
@@ -39,32 +39,10 @@ const selectionOf = (side: "target" | "reference") =>
     set: (selection) => {
       app.model.data[`${side}Ref`] = selection?.primary.column;
       app.model.data[`${side}FilterRef`] = selection?.primary.filter;
-      refreshSubtitleLabel();
     },
   });
 const targetSelection = selectionOf("target");
 const referenceSelection = selectionOf("reference");
-
-// The picked entry's label as the selector shows it: the subset's when one is picked (its label
-// already carries the dataset as a prefix), else the dataset's.
-function pickedLabel(side: "target" | "reference"): string | undefined {
-  const ref = app.model.data[`${side}Ref`];
-  const filter = app.model.data[`${side}FilterRef`];
-  if (!ref) return undefined;
-  const option = app.model.outputs[`${side}Options`]?.find((o) =>
-    plRefsEqual(o.primary.ref, ref, true),
-  );
-  const filterLabel =
-    filter && option?.filters?.find((f) => plRefsEqual(f.ref, filter, true))?.label;
-  return filterLabel ?? option?.primary.label;
-}
-
-function refreshSubtitleLabel() {
-  const targetLabel = pickedLabel("target");
-  const referenceLabel = pickedLabel("reference");
-  app.model.data.subtitleLabel =
-    targetLabel && referenceLabel ? `${targetLabel} ↔ ${referenceLabel}` : "";
-}
 
 const settingsOpen = ref(
   app.model.data.targetRef === undefined || app.model.data.referenceRef === undefined,
