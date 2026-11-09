@@ -13,8 +13,8 @@ export type SequenceType = "nucleotide" | "aminoacid";
  * Advanced Settings section exposes.
  *
  * Two `BlockData` fields are deliberately absent. `subtitleLabel` is the two
- * chosen datasets' labels as the source project's result pool shows them, written
- * by the dataset pickers, so only the user's own `customBlockLabel` is worth restoring. `tableState` is
+ * chosen datasets' labels as the source project's result pool shows them, kept
+ * in sync by the UI, so only the user's own `customBlockLabel` is worth restoring. `tableState` is
  * view state — sort, column visibility and grid position of the results table.
  *
  * Every field is optional: a block may be created with no template at all, and a

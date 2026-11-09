@@ -21,8 +21,8 @@ import {
 export type BlockData = {
   customBlockLabel: string;
   /**
-   * The picked target and reference as the result pool shows them, joined by " ↔ ". Written by
-   * the dataset pickers on a user pick; feeds the subtitle only, never the workflow.
+   * The picked target and reference as the result pool shows them, joined by " ↔ ". Kept in
+   * sync by the UI; feeds the subtitle only, never the workflow.
    */
   subtitleLabel?: string;
   targetRef?: PlRef;
@@ -138,8 +138,8 @@ export const blockDataModel = new DataModelBuilder({ kind })
   }))
   .init(({ params }) => ({
     customBlockLabel: params?.customBlockLabel ?? "",
-    // The datasets' labels come from the result pool, which `init` cannot reach; they are
-    // written when the user picks the datasets.
+    // The datasets' labels come from the result pool, which `init` cannot reach; the UI keeps
+    // them in sync.
     subtitleLabel: "",
     targetRef: params?.targetRef,
     targetFilterRef: params?.targetFilterRef,

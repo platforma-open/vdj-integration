@@ -5,6 +5,5 @@
 
 Compute the block subtitle without opening the block
 
-The subtitle shows the picked target and reference datasets, written when the user
-picks them, so it no longer depends on opening the block. Existing blocks keep
-their subtitle.
+The subtitle shows the picked target and reference datasets, kept in sync with the
+result pool and written only when they change. Existing blocks keep their subtitle.
