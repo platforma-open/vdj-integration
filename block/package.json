@@ -46,7 +46,7 @@
     "meta": {
       "title": "VDJ Integration",
       "logo": "file:../logos/block-logo.png",
-      "url": "https://github.com/platforma-open/milaboratories.vdj-integration",
+      "url": "https://github.com/platforma-open/vdj-integration",
       "support": "mailto:support@milaboratories.com",
       "description": "Matches clonotypes between two VDJ datasets to bring reference properties (paired chains, liabilities) onto the matched clonotypes.",
       "longDescription": "file:../docs/description.md",
