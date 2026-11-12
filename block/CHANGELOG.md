@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.vdj-integration
 
+## 2.1.4
+
+### Patch Changes
+
+- 1b19fb4: Point the block's repository link to the current GitHub repository.
+
 ## 2.1.3
 
 ## 2.1.2
