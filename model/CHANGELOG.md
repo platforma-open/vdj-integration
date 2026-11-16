@@ -1,5 +1,12 @@
 # @platforma-open/milaboratories.vdj-integration.model
 
+## 2.1.5
+
+### Patch Changes
+
+- Updated dependencies [e82fe2a]
+  - @platforma-open/milaboratories.vdj-integration.kind@1.1.1
+
 ## 2.1.4
 
 ## 2.1.3

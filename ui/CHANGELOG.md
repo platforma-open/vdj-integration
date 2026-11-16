@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.vdj-integration.ui
 
+## 2.1.5
+
+### Patch Changes
+
+- @platforma-open/milaboratories.vdj-integration.model@2.1.5
+
 ## 2.1.4
 
 ### Patch Changes
